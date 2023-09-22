@@ -17,7 +17,8 @@ contract PerpetuExTest is Test {
 
     function testPriceFeedSetCorrectly() public {
         address retreivedPriceFeed = address(perpetuEx.getPriceFeed());
-        address expectedPriceFeed = helperConfig.activeNetworkConfig();
+        (address expectedPriceFeed, ) = helperConfig.activeNetworkConfig();
+        console.log(expectedPriceFeed, retreivedPriceFeed);
         assertEq(retreivedPriceFeed, expectedPriceFeed);
     }
 }

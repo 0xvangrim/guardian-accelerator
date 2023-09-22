@@ -2,6 +2,7 @@ pragma solidity ^0.8.19;
 
 import {Script} from "forge-std/Script.sol";
 import {MockV3Aggregator} from "../test/mocks/MockV3Aggregator.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract HelperConfig is Script {
     NetworkConfig public activeNetworkConfig;
@@ -10,33 +11,36 @@ contract HelperConfig is Script {
     int256 public constant INITIAL_PRICE = 2000e8;
     struct NetworkConfig {
         address priceFeed; //BTC/USD Price feed
+        IERC20 usdc;
     }
 
     constructor() {
         if (block.chainid == 11155111) {
-            activeNetworkConfig = getSepoliaBtcConfig();
+            activeNetworkConfig = getSepoliaConfig();
         } else if (block.chainid == 1) {
-            activeNetworkConfig = getMainnetBtcConfig();
+            activeNetworkConfig = getMainnetConfig();
         } else {
-            activeNetworkConfig = getOrCreateAnvilBtcConfig();
+            activeNetworkConfig = getOrCreateAnvilConfig();
         }
     }
 
-    function getSepoliaBtcConfig() public pure returns (NetworkConfig memory) {
+    function getSepoliaConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory sepoliaConfig = NetworkConfig({
-            priceFeed: 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43
+            priceFeed: 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43, //BTC/USD Price feed
+            usdc: IERC20(0x8267cF9254734C6Eb452a7bb9AAF97B392258b21)
         });
         return sepoliaConfig;
     }
 
-    function getMainnetBtcConfig() public pure returns (NetworkConfig memory) {
+    function getMainnetConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory mainnetConfig = NetworkConfig({
-            priceFeed: 0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c
+            priceFeed: 0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c, //BTC/USD Price feed
+            usdc: IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)
         });
         return mainnetConfig;
     }
 
-    function getOrCreateAnvilBtcConfig() public returns (NetworkConfig memory) {
+    function getOrCreateAnvilConfig() public returns (NetworkConfig memory) {
         if (activeNetworkConfig.priceFeed != address(0)) {
             return activeNetworkConfig;
         }
@@ -47,7 +51,8 @@ contract HelperConfig is Script {
         );
         vm.stopBroadcast();
         NetworkConfig memory anvilConfig = NetworkConfig({
-            priceFeed: address(mockV3Aggregator)
+            priceFeed: address(mockV3Aggregator),
+            usdc: IERC20(address(0))
         });
         return anvilConfig;
     }
