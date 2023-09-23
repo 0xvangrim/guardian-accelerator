@@ -35,8 +35,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
     uint256 private constant MAX_LEVERAGE = 20;
-    uint256 private nonce;
-    uint256 public totalPnl = 100 * 10 ** 6; // hardcoded for now
+    uint256 private s_nonce;
+    uint256 public s_totalCollateral;
+    uint256 public s_totalPnl = 100 * 10 ** 6; // hardcoded for now
 
     constructor(
         address priceFeed,
@@ -47,10 +48,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         // TODO: Mint dead shares
     }
 
-    mapping(address => uint256) collateral; //User to collateral mapping
+    mapping(address => uint256) public collateral; //User to collateral mapping
     mapping(uint256 => Order) public orders; // All orders by orderId
     mapping(address => uint256[]) public userToOrderIds; // User's orderIds
-    mapping(address => mapping(uint256 => uint256)) private userOrderIdToIndex; // user address => orderId => index in userToOrderIds
+    mapping(address => mapping(uint256 => uint256)) public userOrderIdToIndex; // user address => orderId => index in userToOrderIds
 
     //  ====================================
     //  ==== External/Public Functions =====
@@ -75,6 +76,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (_position != Position.Long || _position != Position.Short)
             revert PerpetuEx__NoPositionChosen();
         uint256 currentOrderId = ++nonce;
+
         Order memory newOrder = Order({
             orderId: currentOrderId,
             openPrice: _getConversionRate(_size),
@@ -83,6 +85,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             owner: msg.sender,
             position: _position
         });
+
         orders[currentOrderId] = newOrder;
         userToOrderIds[msg.sender].push(currentOrderId);
         userOrderIdToIndex[msg.sender][currentOrderId] =
@@ -213,6 +216,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function totalAssets() public view override returns (uint256) {
         //assuming 1usdc = $1
-        return s_usdc.balanceOf(address(this)) - totalPnl;
+        return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
     }
 }
