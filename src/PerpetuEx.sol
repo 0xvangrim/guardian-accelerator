@@ -29,6 +29,7 @@ contract PerpetuEx is ERC4626 {
     // 20% of the liquidity reserved for safety reasons
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
+    uint256 s_totalCollateral;
     uint256 public totalPnl = 100 * 10 ** 6; // hardcoded for now
 
     constructor(address priceFeed, IERC20 _usdc) ERC4626(_usdc) ERC20("PerpetuEx", "PXT") {
@@ -114,6 +115,6 @@ contract PerpetuEx is ERC4626 {
 
     function totalAssets() public view override returns (uint256) {
         //assuming 1usdc = $1
-        return s_usdc.balanceOf(address(this)) - totalPnl;
+        return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
     }
 }
