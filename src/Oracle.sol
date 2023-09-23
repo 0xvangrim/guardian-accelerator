@@ -9,7 +9,7 @@ library Oracle {
 
     function getBtcInUsdPrice(
         AggregatorV3Interface priceFeed
-    ) internal view returns (uint256) {
+    ) public view returns (uint256) {
         (, int256 answer, , , ) = priceFeed.latestRoundData();
         // BTC/USD rate in 18 digit to avoid truncation errors
         return uint256(answer) * DECIMALS_ADJUSTMENT;
@@ -18,7 +18,7 @@ library Oracle {
     function convertPriceFromUsdToBtc(
         uint256 amountInUsd,
         AggregatorV3Interface priceFeed
-    ) internal view returns (uint256) {
+    ) public view returns (uint256) {
         uint256 btcInUsd = getBtcInUsdPrice(priceFeed);
         // BTC/USD rate in 18 digits to avoid truncation errors
         return (amountInUsd * btcInUsd) / PRECISION;

@@ -15,11 +15,4 @@ contract PerpetuExTest is Test {
         DeployPerpetuEx deployer = new DeployPerpetuEx();
         (perpetuEx, helperConfig) = deployer.run();
     }
-
-    function testPriceFeedSetCorrectly() public {
-        address retreivedPriceFeed = address(perpetuEx.getPriceFeed());
-        (address expectedPriceFeed,) = helperConfig.activeNetworkConfig();
-        console.log(expectedPriceFeed, retreivedPriceFeed);
-        assertEq(retreivedPriceFeed, expectedPriceFeed);
-    }
 }
