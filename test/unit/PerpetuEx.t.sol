@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pragma solidity ^0.8.19;
+
 import {DeployPerpetuEx} from "../../script/DeployPerpetuEx.sol";
 import {PerpetuEx} from "../../src/PerpetuEx.sol";
 import {Test, console} from "forge-std/Test.sol";
@@ -17,7 +18,7 @@ contract PerpetuExTest is Test {
 
     function testPriceFeedSetCorrectly() public {
         address retreivedPriceFeed = address(perpetuEx.getPriceFeed());
-        (address expectedPriceFeed, ) = helperConfig.activeNetworkConfig();
+        (address expectedPriceFeed,) = helperConfig.activeNetworkConfig();
         console.log(expectedPriceFeed, retreivedPriceFeed);
         assertEq(retreivedPriceFeed, expectedPriceFeed);
     }
