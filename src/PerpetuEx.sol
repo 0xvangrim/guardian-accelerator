@@ -65,6 +65,15 @@ contract PerpetuEx is ERC4626 {
     /// ====================================
     /// ======= Internal Functions =========
     /// ====================================
+    /**
+     * @dev Compute the liquidity reserve restriction and substract the total pnl of traders from it
+     */
+    function _updatedLiquidity() internal view returns (uint256 updatedLiquidity) {
+        uint256 liquidityReserveRestriction =
+            totalAssets().mulDiv(MAX_UTILIZATION_PERCENTAGE, MAX_UTILIZATION_PERCENTAGE_DECIMALS);
+
+        updatedLiquidity = liquidityReserveRestriction - totalPnl;
+    }
 
     // =========================
     // ==== View Functions =====
@@ -75,20 +84,31 @@ contract PerpetuEx is ERC4626 {
     }
 
     function maxWithdraw(address owner) public view override returns (uint256 maxWithdrawAllowed) {
-        uint256 ownerBalance = _convertToAssets(balanceOf(owner), Math.Rounding.Floor);
-        uint256 ownerAssets = super.convertToAssets(ownerBalance);
+        uint256 ownerAssets = super._convertToAssets(balanceOf(owner), Math.Rounding.Floor);
 
-        uint256 liquidityReserveRestriction =
-            totalAssets().mulDiv(MAX_UTILIZATION_PERCENTAGE, MAX_UTILIZATION_PERCENTAGE_DECIMALS);
+        uint256 updatedLiquidity = _updatedLiquidity();
 
-        uint256 updatedLiquidity = liquidityReserveRestriction - totalPnl;
-
-        if (ownerAssets >= liquidityReserveRestriction) {
+        if (ownerAssets >= updatedLiquidity) {
             return maxWithdrawAllowed = ownerAssets - updatedLiquidity;
         }
 
         if (ownerAssets < updatedLiquidity) {
             return maxWithdrawAllowed = ownerAssets;
+        }
+    }
+
+    function maxRedeem(address owner) public view override returns (uint256 maxRedeemAllowed) {
+        uint256 ownerAssets = super._convertToAssets(balanceOf(owner), Math.Rounding.Floor);
+
+        uint256 updatedLiquidity = _updatedLiquidity();
+
+        if (ownerAssets >= updatedLiquidity) {
+            uint256 maxAssetsAllowed = ownerAssets - updatedLiquidity;
+            return maxRedeemAllowed = _convertToShares(maxAssetsAllowed, Math.Rounding.Floor);
+        }
+
+        if (ownerAssets < updatedLiquidity) {
+            return maxRedeemAllowed = _convertToShares(ownerAssets, Math.Rounding.Floor);
         }
     }
 
