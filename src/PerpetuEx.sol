@@ -12,6 +12,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IPerpetuEx} from "./IPerpetuEx.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
     struct Order {
@@ -26,6 +27,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     using Oracle for uint256;
     using SafeERC20 for IERC20;
     using Math for uint256;
+    using EnumerableSet for EnumerableSet.UintSet;
 
     AggregatorV3Interface public immutable s_priceFeed;
 
@@ -49,9 +51,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     mapping(address => uint256) public collateral; //User to collateral mapping
-    mapping(uint256 => Order) public orders; // All orders by orderId
-    mapping(address => uint256[]) public userToOrderIds; // User's orderIds
-    mapping(address => mapping(uint256 => uint256)) public userOrderIdToIndex; // user address => orderId => index in userToOrderIds
+    mapping(uint256 => Order) public orders; // orderId => Order
+    mapping(address => EnumerableSet.UintSet) private userToOrderIds; // user => orderIds
 
     //  ====================================
     //  ==== External/Public Functions =====
@@ -87,27 +88,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         });
 
         orders[currentOrderId] = newOrder;
-        userToOrderIds[msg.sender].push(currentOrderId);
-        userOrderIdToIndex[msg.sender][currentOrderId] =
-            userToOrderIds[msg.sender].length -
-            1;
+        userToOrderIds[msg.sender].add(currentOrderId);
     }
 
     function closeOrder(uint256 _orderId) external {
         Order storage order = orders[_orderId];
         if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
 
-        // Remove the orderId from userToOrderIds array using a swap-and-pop method
-        uint256 indexToRemove = userOrderIdToIndex[msg.sender][_orderId];
-        uint256 lastOrderId = userToOrderIds[msg.sender][
-            userToOrderIds[msg.sender].length - 1
-        ];
+        userToOrderIds[msg.sender].remove(_orderId);
 
-        userToOrderIds[msg.sender][indexToRemove] = lastOrderId;
-        userOrderIdToIndex[msg.sender][lastOrderId] = indexToRemove;
-        userToOrderIds[msg.sender].pop();
-
-        delete userOrderIdToIndex[msg.sender][_orderId];
         delete orders[_orderId];
     }
 
