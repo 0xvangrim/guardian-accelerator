@@ -34,7 +34,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     // 20% of the liquidity reserved for safety reasons
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
-    uint256 private constant MAX_SIZE = 20;
+    uint256 private constant MAX_LEVERAGE = 20;
     uint256 private nonce;
     uint256 public totalPnl = 100 * 10 ** 6; // hardcoded for now
 
@@ -50,7 +50,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     mapping(address => uint256) collateral; //User to collateral mapping
     mapping(uint256 => Order) public orders; // All orders by orderId
     mapping(address => uint256[]) public userToOrderIds; // User's orderIds
-    mapping(address => mapping(uint256 => uint256)) private userOrderIdToIndex; // Map of user's orderId to its index in userToOrderIds
+    mapping(address => mapping(uint256 => uint256)) private userOrderIdToIndex; // user address => orderId => index in userToOrderIds
 
     //  ====================================
     //  ==== External/Public Functions =====
@@ -69,23 +69,17 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         s_usdc.safeTransfer(msg.sender, collateral[msg.sender]);
     }
 
-    function createOrder(
-        uint256 _size,
-        uint256 _collateral,
-        Position _position
-    ) external {
-        if (_size == 0 || _size > MAX_SIZE) revert PerpetuEx__InvalidSize();
-        if (_collateral == 0 || _collateral > collateral[msg.sender])
-            revert PerpetuEx__InvalidCollateral();
-
+    function createOrder(uint256 _size, Position _position) external {
+        if (_size == 0 || _calculateUserLeverage(_size) > MAX_LEVERAGE)
+            revert PerpetuEx__InvalidSize();
         if (_position != Position.Long || _position != Position.Short)
             revert PerpetuEx__NoPositionChosen();
         uint256 currentOrderId = ++nonce;
         Order memory newOrder = Order({
             orderId: currentOrderId,
-            openPrice: getConversionRate(_size),
+            openPrice: _getConversionRate(_size),
             size: _size,
-            collateral: _collateral,
+            collateral: collateral[msg.sender],
             owner: msg.sender,
             position: _position
         });
@@ -114,18 +108,19 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         delete orders[_orderId];
     }
 
-    function updateSize(
-        uint256 _orderId,
-        uint256 _size,
-        uint256 _collateral
-    ) external {
-        if (_size == 0) revert PerpetuEx__InvalidSize();
-        //check that collateral is enough
+    function updateSize(uint256 _orderId, uint256 _size) external {
+        Order storage order = orders[_orderId];
+        if (_size == 0 || _calculateUserLeverage(_size) > MAX_LEVERAGE)
+            revert PerpetuEx__InvalidSize();
+        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
+        order.size = _size;
     }
 
     function updateCollateral(uint256 _orderId, uint256 _collateral) external {
+        Order storage order = orders[_orderId];
         if (_collateral == 0) revert PerpetuEx__InvalidCollateral();
-        //check that collateral is enough
+        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
+        order.collateral += _collateral;
         s_usdc.safeTransferFrom(msg.sender, address(this), _collateral);
     }
 
@@ -149,15 +144,24 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     // =========================
-    // ==== View Functions =====
+    // ==== View/Pure Functions =====
     // =========================
 
-    function getPriceFeed() public view returns (AggregatorV3Interface) {
-        return s_priceFeed;
+    function getPriceFeed() public view returns (uint256) {
+        return Oracle.getBtcInUsdPrice(s_priceFeed);
     }
 
-    function getConversionRate(uint256 _amount) public view returns (uint256) {
+    function _getConversionRate(
+        uint256 _amount
+    ) internal view returns (uint256) {
         return Oracle.convertPriceFromUsdToBtc(_amount, s_priceFeed);
+    }
+
+    function _calculateUserLeverage(
+        uint256 _size
+    ) internal view returns (uint256) {
+        uint256 priceFeed = getPriceFeed();
+        uint256 userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
     }
 
     function maxWithdraw(
