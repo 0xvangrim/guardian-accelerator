@@ -75,7 +75,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             revert PerpetuEx__InvalidSize();
         if (_position != Position.Long || _position != Position.Short)
             revert PerpetuEx__NoPositionChosen();
-        uint256 currentOrderId = ++nonce;
+        uint256 currentOrderId = ++s_nonce;
 
         Order memory newOrder = Order({
             orderId: currentOrderId,
@@ -143,7 +143,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             MAX_UTILIZATION_PERCENTAGE_DECIMALS
         );
 
-        updatedLiquidity = liquidityReserveRestriction - totalPnl;
+        updatedLiquidity = liquidityReserveRestriction - s_totalPnl;
     }
 
     // =========================
@@ -162,9 +162,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function _calculateUserLeverage(
         uint256 _size
-    ) internal view returns (uint256) {
+    ) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
-        uint256 userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
+        userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
     }
 
     function maxWithdraw(
@@ -216,6 +216,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function totalAssets() public view override returns (uint256) {
         //assuming 1usdc = $1
-        return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
+        return s_usdc.balanceOf(address(this)) - s_totalPnl - s_totalCollateral;
     }
 }
