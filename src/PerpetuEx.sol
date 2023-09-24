@@ -76,7 +76,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     function createOrder(uint256 _size, Position _position) external {
-        if (_size == 0 || _calculateUserLeverage(_size) > MAX_LEVERAGE) {
+        if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
         if (_position != Position.Long || _position != Position.Short) {
@@ -118,10 +118,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     function increaseSize(uint256 _orderId, uint256 _size) external {
         Order storage order = orders[_orderId];
         uint256 currentPrice = getPriceFeed();
-        if (_size == 0 || _calculateUserLeverage(_size) > MAX_LEVERAGE) {
+        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
+        if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
-        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
         // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
         // Update the total value and size of the order
@@ -173,10 +173,20 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         return order.totalValue / order.size;
     }
 
-    function _calculateUserLeverage(uint256 _size) internal view returns (uint256 userLeverage) {
+    function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
-        //TODO: if trader already has an open order, update collateral accordingly
-        userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
+        if (userToOrderIds[_user].length() > 0) {
+            int256 userPnl =
+                _calculateUserPnl(userToOrderIds[_user].at(0), orders[userToOrderIds[_user].at(0)].position);
+            if (userPnl >= 0) {
+                userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender] + uint256(userPnl));
+            } else {
+                uint256 unsignedPnl = SignedMath.abs(userPnl);
+                userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender] - unsignedPnl);
+            }
+        } else {
+            userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
+        }
     }
 
     function _calculateUserPnl(uint256 _orderId, Position _position) internal view returns (int256 pnl) {
