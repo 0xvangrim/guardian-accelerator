@@ -175,6 +175,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function _calculateUserLeverage(uint256 _size) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
+        //TODO: if trader already has an open order, update collateral accordingly
         userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
     }
 
@@ -213,11 +214,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
         if (ownerAssets >= updatedLiquidity) {
             uint256 maxAssetsAllowed = ownerAssets - updatedLiquidity;
-            return maxRedeemAllowed = _convertToShares(maxAssetsAllowed, Math.Rounding.Floor);
+            return maxRedeemAllowed = super._convertToShares(maxAssetsAllowed, Math.Rounding.Floor);
         }
 
         if (ownerAssets < updatedLiquidity) {
-            return maxRedeemAllowed = _convertToShares(ownerAssets, Math.Rounding.Floor);
+            return maxRedeemAllowed = super._convertToShares(ownerAssets, Math.Rounding.Floor);
         }
     }
 
