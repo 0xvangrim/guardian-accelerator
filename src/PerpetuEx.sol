@@ -13,12 +13,13 @@ import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.so
 import {IPerpetuEx} from "./IPerpetuEx.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
     struct Order {
         uint256 orderId;
         Position position;
-        uint256 openPrice;
+        uint256 totalValue; // Accumulated USD value committed to the position
         uint256 size;
         uint256 collateral;
         address owner;
@@ -39,7 +40,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private constant MAX_LEVERAGE = 20;
     uint256 private s_nonce;
     uint256 public s_totalCollateral;
-    uint256 public s_totalPnl = 100 * 10 ** 6; // hardcoded for now
+    int256 public s_totalPnl;
 
     constructor(
         address priceFeed,
@@ -53,6 +54,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     mapping(address => uint256) public collateral; //User to collateral mapping
     mapping(uint256 => Order) public orders; // orderId => Order
     mapping(address => EnumerableSet.UintSet) private userToOrderIds; // user => orderIds
+    mapping(address => int256) public userShortPnl; // user => short pnl
+    mapping(address => int256) public userLongPnl; // user => long pnl
 
     //  ====================================
     //  ==== External/Public Functions =====
@@ -77,12 +80,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (_position != Position.Long || _position != Position.Short)
             revert PerpetuEx__NoPositionChosen();
         uint256 currentOrderId = ++s_nonce;
-
+        uint256 currentPrice = getPriceFeed();
         Order memory newOrder = Order({
             orderId: currentOrderId,
-            openPrice: _getConversionRate(_size),
             size: _size,
             collateral: collateral[msg.sender],
+            totalValue: _size * currentPrice,
             owner: msg.sender,
             position: _position
         });
@@ -94,21 +97,41 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     function closeOrder(uint256 _orderId) external {
         Order storage order = orders[_orderId];
         if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
-
+        // calculate pnl for user and add to total pnl
+        if (order.position == Position.Long) {
+            userLongPnl[msg.sender] += _calculateUserPnl(
+                _orderId,
+                order.position
+            );
+        } else {
+            userShortPnl[msg.sender] += _calculateUserPnl(
+                _orderId,
+                order.position
+            );
+        }
+        s_totalPnl += _calculateUserPnl(_orderId, order.position);
         userToOrderIds[msg.sender].remove(_orderId);
 
         delete orders[_orderId];
     }
 
-    function updateSize(uint256 _orderId, uint256 _size) external {
+    function increaseSize(uint256 _orderId, uint256 _size) external {
         Order storage order = orders[_orderId];
+        uint256 currentPrice = getPriceFeed();
         if (_size == 0 || _calculateUserLeverage(_size) > MAX_LEVERAGE)
             revert PerpetuEx__InvalidSize();
         if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
-        order.size = _size;
+        // Calculate the total USD value of the new position being added
+        uint256 addedValue = _size * currentPrice;
+        // Update the total value and size of the order
+        order.totalValue += addedValue;
+        order.size += _size;
     }
 
-    function updateCollateral(uint256 _orderId, uint256 _collateral) external {
+    function increaseCollateral(
+        uint256 _orderId,
+        uint256 _collateral
+    ) external {
         Order storage order = orders[_orderId];
         if (_collateral == 0) revert PerpetuEx__InvalidCollateral();
         if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
@@ -131,8 +154,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             MAX_UTILIZATION_PERCENTAGE,
             MAX_UTILIZATION_PERCENTAGE_DECIMALS
         );
-
-        updatedLiquidity = liquidityReserveRestriction - s_totalPnl;
+        uint256 totalPnl = SignedMath.abs(s_totalPnl);
+        if (s_totalPnl >= 0) {
+            updatedLiquidity = liquidityReserveRestriction - totalPnl;
+        }
+        if (s_totalPnl < 0)
+            updatedLiquidity = liquidityReserveRestriction + totalPnl;
     }
 
     // =========================
@@ -149,11 +176,36 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         return Oracle.convertPriceFromUsdToBtc(_amount, s_priceFeed);
     }
 
+    function getAverageOpenPrice(
+        uint256 _orderId
+    ) public view returns (uint256) {
+        Order memory order = orders[_orderId];
+        if (orders[_orderId].orderId == 0) revert PerpetuEx__InvalidOrderId();
+        return order.totalValue / order.size;
+    }
+
     function _calculateUserLeverage(
         uint256 _size
     ) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
         userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender]);
+    }
+
+    function _calculateUserPnl(
+        uint256 _orderId,
+        Position _position
+    ) internal view returns (int256 pnl) {
+        uint256 currentPrice = getPriceFeed();
+        uint256 averagePrice = getAverageOpenPrice(_orderId);
+        Order storage order = orders[_orderId];
+
+        if (_position == Position.Long) {
+            pnl = int256(currentPrice - averagePrice) * int256(order.size);
+        } else if (_position == Position.Short) {
+            pnl = int256(averagePrice - currentPrice) * int256(order.size);
+        } else {
+            revert PerpetuEx__NoPositionChosen();
+        }
     }
 
     function maxWithdraw(
@@ -205,6 +257,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function totalAssets() public view override returns (uint256) {
         //assuming 1usdc = $1
-        return s_usdc.balanceOf(address(this)) - s_totalPnl - s_totalCollateral;
+        uint256 totalPnl = SignedMath.abs(s_totalPnl);
+        return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
     }
 }

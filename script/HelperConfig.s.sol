@@ -9,6 +9,7 @@ contract HelperConfig is Script {
 
     uint8 public constant DECIMALS = 8;
     int256 public constant INITIAL_PRICE = 2000e8;
+
     struct NetworkConfig {
         address priceFeed; //BTC/USD Price feed
         IERC20 usdc;
@@ -50,10 +51,8 @@ contract HelperConfig is Script {
             INITIAL_PRICE
         );
         vm.stopBroadcast();
-        NetworkConfig memory anvilConfig = NetworkConfig({
-            priceFeed: address(mockV3Aggregator),
-            usdc: IERC20(address(0))
-        });
+        NetworkConfig memory anvilConfig =
+            NetworkConfig({priceFeed: address(mockV3Aggregator), usdc: IERC20(address(0))});
         return anvilConfig;
     }
 }
