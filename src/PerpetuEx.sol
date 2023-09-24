@@ -97,7 +97,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         userToOrderIds[msg.sender].add(currentOrderId);
     }
 
-    // TODO: add pnl to the collateral
     function closeOrder(uint256 _orderId) external {
         Order storage order = orders[_orderId];
         if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
@@ -224,7 +223,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function totalAssets() public view override returns (uint256) {
         //assuming 1usdc = $1
-        uint256 totalPnl = SignedMath.abs(s_totalPnl);
-        return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
+        if (s_totalPnl >= 0) {
+            uint256 totalPnl = uint256(s_totalPnl);
+            return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
+        }
+        if (s_totalPnl < 0) {
+            uint256 totalPnl = SignedMath.abs(s_totalPnl);
+            return s_usdc.balanceOf(address(this)) + totalPnl - s_totalCollateral;
+        }
     }
 }
