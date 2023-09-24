@@ -11,6 +11,7 @@ interface IPerpetuEx {
     error PerpetuEx__InvalidOrder();
     error PerpetuEx__NotOwner();
     error PerpetuEx__NoPositionChosen();
+    error PerpetuEx__InvalidOrderId();
 
     enum Position {
         Long,
