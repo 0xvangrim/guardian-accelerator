@@ -97,14 +97,18 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         userToOrderIds[msg.sender].add(currentOrderId);
     }
 
+    // TODO: add pnl to the collateral
     function closeOrder(uint256 _orderId) external {
         Order storage order = orders[_orderId];
         if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
         // calculate pnl for user and add to total pnl
-        if (order.position == Position.Long) {
-            userLongPnl[msg.sender] += _calculateUserPnl(_orderId, order.position);
+        int256 pnl = _calculateUserPnl(_orderId, order.position);
+        // update trader's collateral, profits or losses are now realized, trader can withdraw if he wants to
+        if (pnl >= 0) {
+            collateral[msg.sender] += uint256(pnl);
         } else {
-            userShortPnl[msg.sender] += _calculateUserPnl(_orderId, order.position);
+            uint256 unsignedPnl = SignedMath.abs(pnl);
+            collateral[msg.sender] -= unsignedPnl;
         }
         s_totalPnl += _calculateUserPnl(_orderId, order.position);
         userToOrderIds[msg.sender].remove(_orderId);
