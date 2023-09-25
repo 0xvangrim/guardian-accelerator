@@ -274,6 +274,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         address _user
     ) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
+        //TODO: Add support for more orderes from the same user. For now we block it.
         uint256 orderId = userToOrderIds[_user].at(0);
         Order memory order = orders[orderId];
 
