@@ -60,7 +60,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     mapping(address => uint256) public collateral; //User to collateral mapping
     mapping(uint256 => Order) public orders; // orderId => Order
-    mapping(address => EnumerableSet.UintSet) private userToOrderIds; // user => orderIds
+    mapping(address => EnumerableSet.UintSet) internal userToOrderIds; // user => orderIds
     mapping(address => int256) public userShortPnl; // user => short pnl
     mapping(address => int256) public userLongPnl; // user => long pnl
 
@@ -81,9 +81,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (userToOrderIds[msg.sender].length() > 0) {
             revert PerpetuEx__OpenPositionExists();
         }
+        uint256 withdrawalAmount = collateral[msg.sender];
         collateral[msg.sender] = 0;
-        //TODO: Add inflation attack protection
-        // i_usdc.safeTransfer(msg.sender, collateral[msg.sender]);
+        i_usdc.safeTransfer(msg.sender, withdrawalAmount);
     }
 
     function deposit(
@@ -119,7 +119,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         ) {
             revert PerpetuEx__InvalidSize();
         }
-        if (_position != Position.Long || _position != Position.Short) {
+        if (_position != Position.Long && _position != Position.Short) {
             revert PerpetuEx__NoPositionChosen();
         }
         //TODO: Add support for more orderes from the same user. For now we block it.
@@ -251,6 +251,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     // =========================
     // ==== View/Pure Functions =====
     // =========================
+
+    function userOrderIdByIndex(
+        address user,
+        uint256 index
+    ) public view returns (uint256) {
+        return userToOrderIds[user].at(index);
+    }
 
     function getPriceFeed() public view returns (uint256) {
         return Oracle.getBtcInUsdPrice(i_priceFeed);
