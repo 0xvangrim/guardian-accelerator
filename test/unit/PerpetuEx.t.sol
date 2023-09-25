@@ -14,10 +14,7 @@ interface IUSDC {
 
     function mint(address to, uint256 amount) external;
 
-    function configureMinter(
-        address minter,
-        uint256 minterAllowedAmount
-    ) external;
+    function configureMinter(address minter, uint256 minterAllowedAmount) external;
 
     function masterMinter() external view returns (address);
 
@@ -50,7 +47,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         (perpetuEx, helperConfig) = deployer.run();
 
         vm.prank(USER);
-        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        // IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
     }
 
     function testBalance() public {

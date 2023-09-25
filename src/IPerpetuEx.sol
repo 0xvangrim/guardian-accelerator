@@ -20,4 +20,9 @@ interface IPerpetuEx {
         Long,
         Short
     }
+
+    enum OrderAction {
+        Open,
+        Close
+    }
 }
