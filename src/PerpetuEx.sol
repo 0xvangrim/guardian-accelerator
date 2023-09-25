@@ -103,7 +103,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         } else {
             if (
                 s_shortOpenInterest + (_size * currentPrice) + (s_longOpenInterestInTokens * currentPrice)
-                    > updatedLiquidity
+                    >= updatedLiquidity
             ) {
                 revert PerpetuEx__InsufficientLiquidity();
             }
