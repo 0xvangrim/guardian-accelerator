@@ -39,7 +39,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
     uint256 private constant MAX_LEVERAGE = 20;
     uint256 private s_nonce;
-    uint256 public s_totalCollateral;
+    uint256 public s_totalLiquidityDeposited;
     int256 public s_totalPnl;
     uint256 public s_shortOpenInterest;
     uint256 public s_longOpenInterestInTokens;
@@ -75,6 +75,21 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
         collateral[msg.sender] = 0;
         s_usdc.safeTransfer(msg.sender, collateral[msg.sender]);
+    }
+
+    function deposit(uint256 assets, address receiver) public override returns (uint256) {
+        s_totalLiquidityDeposited += assets;
+        super.deposit(assets, receiver);
+    }
+
+    function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256) {
+        s_totalLiquidityDeposited -= assets;
+        super.withdraw(assets, receiver, owner);
+    }
+
+    function redeem(uint256 shares, address receiver, address owner) public override returns (uint256) {
+        uint256 assets = super.redeem(shares, receiver, owner);
+        s_totalLiquidityDeposited -= assets;
     }
 
     function createOrder(uint256 _size, Position _position) external {
@@ -270,11 +285,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         //assuming 1usdc = $1
         if (s_totalPnl >= 0) {
             uint256 totalPnl = uint256(s_totalPnl);
-            return s_usdc.balanceOf(address(this)) - totalPnl - s_totalCollateral;
+            return s_totalLiquidityDeposited - totalPnl;
         }
         if (s_totalPnl < 0) {
             uint256 totalPnl = SignedMath.abs(s_totalPnl);
-            return s_usdc.balanceOf(address(this)) + totalPnl - s_totalCollateral;
+            return s_totalLiquidityDeposited + totalPnl;
         }
     }
 }
