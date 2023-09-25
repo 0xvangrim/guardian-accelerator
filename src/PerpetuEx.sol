@@ -41,6 +41,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private s_nonce;
     uint256 public s_totalCollateral;
     int256 public s_totalPnl;
+    uint256 public s_shortOpenInterest;
+    uint256 public s_longOpenInterestInTokens;
 
     constructor(address priceFeed, IERC20 _usdc) ERC4626(_usdc) ERC20("PerpetuEx", "PXT") {
         s_priceFeed = AggregatorV3Interface(priceFeed);
@@ -92,7 +94,26 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             owner: msg.sender,
             position: _position
         });
-
+        // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
+        uint256 updatedLiquidity = _updatedLiquidity();
+        if (_position == Position.Long) {
+            if (((s_longOpenInterestInTokens + _size) * currentPrice) + s_shortOpenInterest >= updatedLiquidity) {
+                revert PerpetuEx__InsufficientLiquidity();
+            }
+        } else {
+            if (
+                s_shortOpenInterest + (_size * currentPrice) + (s_longOpenInterestInTokens * currentPrice)
+                    > updatedLiquidity
+            ) {
+                revert PerpetuEx__InsufficientLiquidity();
+            }
+        }
+        // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
+        if (_position == Position.Long) {
+            s_longOpenInterestInTokens += _size;
+        } else {
+            s_shortOpenInterest += _size * currentPrice;
+        }
         orders[currentOrderId] = newOrder;
         userToOrderIds[msg.sender].add(currentOrderId);
     }
@@ -109,6 +130,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             uint256 unsignedPnl = SignedMath.abs(pnl);
             collateral[msg.sender] -= unsignedPnl;
         }
+        // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
+        if (order.position == Position.Long) {
+            s_longOpenInterestInTokens -= order.size;
+        } else {
+            uint256 averagePrice = getAverageOpenPrice(_orderId);
+            s_shortOpenInterest -= order.size * averagePrice;
+        }
         s_totalPnl += _calculateUserPnl(_orderId, order.position);
         userToOrderIds[msg.sender].remove(_orderId);
 
@@ -124,6 +152,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
         // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
+        // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
+        if (order.position == Position.Long) {
+            s_longOpenInterestInTokens += _size;
+        } else {
+            s_shortOpenInterest += _size * currentPrice;
+        }
         // Update the total value and size of the order
         order.totalValue += addedValue;
         order.size += _size;
