@@ -14,6 +14,7 @@ interface IPerpetuEx {
     error PerpetuEx__InvalidOrderId();
     error PerpetuEx__OpenPositionExists();
     error PerpetuEx__InsufficientLiquidity();
+    error PerpetuEx__NoUserOrders();
 
     enum Position {
         Long,
