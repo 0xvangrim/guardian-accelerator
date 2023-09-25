@@ -1,66 +1,71 @@
-## Foundry
+# PerpetueEx Perpetual Future Protocol
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+## The [`PerpetuEx`](src/perpetuEx.sol) Contract
 
-Foundry consists of:
+### Introduction
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+The PerpetuEx smart contract is a Perpetual Futures protocol built on the Ethereum blockchain. It provides a platform for users to create and manage leveraged trading orders, enabling both long and short positions in wrapped Bitcoin (wBtc)
 
-## Documentation
+### Contract Overview
 
-https://book.getfoundry.sh/
+The PerpetuEx contract is a complex financial instrument with several features and components. Here's a brief overview of its key components:
 
-## Usage
+- Orders: Users can create trading orders with specified sizes and positions (Long or Short). These orders are tracked and managed by the contract.
+  The user does not hold the underlying asset; they are simply speculating on the price of the underlying asset.
 
-### Build
+- Collateral: Users can deposit collateral in the form of a stablecoin (USDC) to support their trading positions.
+  Collateral allows determining the user's leverage of a given position.
 
-```shell
-$ forge build
-```
+  For example, if a user deposits $300 as collateral and create a long order with size of 1 on wBtc, given a wBTC price of $30,000, their leverage is x10.
 
-### Test
+  The maximum allowed leverage is 20x. If the user's position exceeds this level due to a market move in the opposite direction of their anticipation, the order is subject to liquidation. In case of liquidation, the sudden loss will be reduced by the collateral, which can be withdrawn if desired.
 
-```shell
-$ forge test
-```
+- Liquidity Management: The contract enforces liquidity reserve restrictions to ensure the safety of funds. It calculates and updates open interest positions based on user orders.
 
-### Format
+  Liquidity is provided by liquidity providers (LPs). These LPs receive a share proportional to their liquidity deposit. When withdrawing liquidity, the LP must return their shares to the contract, which will be burned, in order to receive the corresponding amount in USDC.
 
-```shell
-$ forge fmt
-```
+  Deposit accounting and share minting are managed following EIP-4626 for vault tokens.
 
-### Gas Snapshots
+- PnL Calculation: The contract calculates profit and loss (PnL) for each user based on the price movements of the underlying asset.
 
-```shell
-$ forge snapshot
-```
+### Parameters
 
-### Anvil
+The PerpetuEx contract has several configurable parameters that control its behavior. Here are the key parameters:
 
-```shell
-$ anvil
-```
+- `priceFeed`: Address of the price feed contract used for asset pricing.
 
-### Deploy
+- `usdc`: Address of the USDC stablecoin contract.
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+- `MAX_UTILIZATION_PERCENTAGE`: Maximum utilization percentage for liquidity.
 
-### Cast
+- `MAX_LEVERAGE`: Maximum leverage allowed for trading.
 
-```shell
-$ cast <subcommand>
-```
+- `s_totalLiquidityDeposited`: Total liquidity deposited by LPs
 
-### Help
+- `s_totalPnl`: Total PnL of users
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- `s_shortOpenInterest`: Total amount (size \* price) of short orders opened in the protocol
+
+- `s_longOpenInterestInTokens`: Total size (number of wBTC tokens) of long opened in the protocol
+
+### Deposit
+
+Traders and liquidity providers must first make a deposit in USDC
+
+- `depositCollateral(uint256 _amount)`: Traders deposit the desired amount in USDC, and this deposit serves as collateral to enter the market.
+
+- `deposit(uint256 assets, address receiver)`: Liquidity providers deposit their desired amount of USDC and, in return, receive a number of shares proportionate to their amount relative to the total liquidity provided by all LPs. This way, LPs directly act as counterparties to the traders.
+
+### Withdraw
+
+- `withdrawCollateral()`: Traders can withdraw their collateral as long as they do not have an open position in the market.
+
+- `withdraw(uint256 assets, address receiver, address owner)`: Liquidity Providers can withdraw their desired amount of liquidity as long as the withdrawal does not impact the ability to pay out profits to traders
+
+### Conclusion
+
+The PerpetuEx smart contract is a powerful DeFi tool for leveraged trading and managing trading positions. Users can deposit collateral, create orders, and benefit from price movements while adhering to strict liquidity management rules.
+
+For more details on using the contract and its functions, please refer to the contract's source code and comments.
+
+**Disclaimer:** This README serves as a high-level overview of the PerpetuEx contract. Users should review the contract source code and seek professional advice before interacting with it. The contract involves financial risk, and all trading decisions are the responsibility of the user.
