@@ -1,6 +1,6 @@
 # PerpetueEx Perpetual Future Protocol
 
-## The [`PerpetuEx`](src/perpetuEx.sol) Contract
+## The [`PerpetuEx`](src/PerpetuEx.sol) Contract
 
 ### Introduction
 
