@@ -32,8 +32,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     // User mock params
     uint256 SIZE = 1;
-    Position POSITION_LONG = Position(0);
-    Position POSITION_SHORT = Position(1);
     uint256 COLLATERAL = 1000e6;
 
     function setUp() external {
@@ -80,16 +78,16 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(perpetuEx.collateral(USER), 0);
     }
 
-    function testCreateOrder() public {
+    function testCreatePosition() public {
         vm.startPrank(USER);
         perpetuEx.depositCollateral(COLLATERAL);
-        perpetuEx.createOrder(SIZE, POSITION_LONG);
+        perpetuEx.createPosition(SIZE, true);
         vm.stopPrank();
-        // uint256 orderId = perpetuEx.userOrderIdByIndex(USER, 0);
-        // (, Position position, , uint256 size, , ) = perpetuEx.orders(orderId);
+        // uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        // (, isLong, , uint256 size, , ) = perpetuEx.positions(positionId);
 
         // assertEq(perpetuEx.collateral(USER), COLLATERAL);
-        // // assertEq(position, POSITION_LONG);
+        // // assertEq(position, true);
         // assertEq(size, SIZE);
         // assertEq(perpetuEx.s_longOpenInterestInTokens(), SIZE);
     }

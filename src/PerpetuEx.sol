@@ -17,9 +17,9 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
-    struct Order {
-        uint256 orderId;
-        Position position;
+    struct Position {
+        uint256 positionId;
+        bool isLong;
         uint256 totalValue; // Accumulated USD value committed to the position
         uint256 size;
         uint256 collateral;
@@ -56,8 +56,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     mapping(address => uint256) public collateral; //User to collateral mapping
-    mapping(uint256 => Order) public orders; // orderId => Order
-    mapping(address => EnumerableSet.UintSet) internal userToOrderIds; // user => orderIds
+    mapping(uint256 => Position) public positions; // positionId => position
+    mapping(address => EnumerableSet.UintSet) internal userToPositionIds; // user => positionIds
     mapping(address => int256) public userShortPnl; // user => short pnl
     mapping(address => int256) public userLongPnl; // user => long pnl
 
@@ -75,7 +75,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (collateral[msg.sender] == 0) {
             revert PerpetuEx__InsufficientCollateral();
         }
-        if (userToOrderIds[msg.sender].length() > 0) {
+        if (userToPositionIds[msg.sender].length() > 0) {
             revert PerpetuEx__OpenPositionExists();
         }
         uint256 withdrawalAmount = collateral[msg.sender];
@@ -103,43 +103,40 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         s_totalLiquidityDeposited -= assets;
     }
 
-    function createOrder(uint256 _size, Position _position) external {
+    function createPosition(uint256 _size, bool _isLong) external {
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
-        if (_position != Position.Long && _position != Position.Short) {
-            revert PerpetuEx__NoPositionChosen();
-        }
         //TODO: Add support for more orderes from the same user. For now we block it.
-        if (userToOrderIds[msg.sender].length() > 0) {
+        if (userToPositionIds[msg.sender].length() > 0) {
             revert PerpetuEx__OpenPositionExists();
         }
-        uint256 currentOrderId = ++s_nonce;
+        uint256 currentPositionId = ++s_nonce;
         uint256 currentPrice = getPriceFeed();
-        Order memory newOrder = Order({
-            orderId: currentOrderId,
+        Position memory newPosition = Position({
+            positionId: currentPositionId,
             size: _size,
             collateral: collateral[msg.sender],
             totalValue: _size * currentPrice,
             owner: msg.sender,
-            position: _position
+            isLong: _isLong
         });
         // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
-        if (_totalOpenInterest(_position, _size, currentPrice) >= _updatedLiquidity()) {
+        if (_totalOpenInterest(_isLong, _size, currentPrice) >= _updatedLiquidity()) {
             revert PerpetuEx__InsufficientLiquidity();
         }
         // Update the actual open interests
-        _updateOpenInterests(_position, _size, currentPrice, OrderAction.Open);
-        orders[currentOrderId] = newOrder;
-        userToOrderIds[msg.sender].add(currentOrderId);
+        _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
+        positions[currentPositionId] = newPosition;
+        userToPositionIds[msg.sender].add(currentPositionId);
     }
 
-    function closeOrder(uint256 _orderId) external {
-        Order storage order = orders[_orderId];
-        if (order.orderId == 0) revert PerpetuEx__InvalidOrderId();
-        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
+    function closePosition(uint256 _positionId) external {
+        Position storage position = positions[_positionId];
+        if (position.positionId == 0) revert PerpetuEx__InvalidPositionId();
+        if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
         // calculate pnl for user and add to total pnl
-        int256 pnl = _calculateUserPnl(_orderId, order.position);
+        int256 pnl = _calculateUserPnl(_positionId, position.isLong);
         // update trader's collateral, profits or losses are now realized, trader can withdraw if he wants to
         if (pnl >= 0) {
             collateral[msg.sender] += uint256(pnl);
@@ -149,34 +146,34 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             collateral[msg.sender] -= unsignedPnl;
         }
         // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
-        _updateOpenInterests(order.position, order.size, getAverageOpenPrice(_orderId), OrderAction.Close);
-        s_totalPnl += _calculateUserPnl(_orderId, order.position);
-        userToOrderIds[msg.sender].remove(_orderId);
+        _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
+        s_totalPnl += _calculateUserPnl(_positionId, position.isLong);
+        userToPositionIds[msg.sender].remove(_positionId);
 
-        delete orders[_orderId];
+        delete positions[_positionId];
     }
 
-    function increaseSize(uint256 _orderId, uint256 _size) external {
-        Order storage order = orders[_orderId];
+    function increaseSize(uint256 _positionId, uint256 _size) external {
+        Position storage position = positions[_positionId];
         uint256 currentPrice = getPriceFeed();
-        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
+        if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
         // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
         // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
-        _updateOpenInterests(order.position, _size, currentPrice, OrderAction.Open);
+        _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
         // Update the total value and size of the order
-        order.totalValue += addedValue;
-        order.size += _size;
+        position.totalValue += addedValue;
+        position.size += _size;
     }
 
-    function increaseCollateral(uint256 _orderId, uint256 _collateral) external {
-        Order storage order = orders[_orderId];
+    function increaseCollateral(uint256 _positionId, uint256 _collateral) external {
+        Position storage position = positions[_positionId];
         if (_collateral == 0) revert PerpetuEx__InvalidCollateral();
-        if (order.owner != msg.sender) revert PerpetuEx__NotOwner();
-        order.collateral += _collateral;
+        if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
+        position.collateral += _collateral;
         i_usdc.safeTransferFrom(msg.sender, address(this), _collateral);
     }
 
@@ -198,36 +195,34 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
-    function _totalOpenInterest(Position _position, uint256 _size, uint256 _currentPrice)
+    function _totalOpenInterest(bool _isLong, uint256 _size, uint256 _currentPrice)
         internal
         view
         returns (uint256 totalOpenInterestValue)
     {
         // Calculate new open interests
-        uint256 newLongOpenInterestInTokens =
-            _position == Position.Long ? s_longOpenInterestInTokens + _size : s_longOpenInterestInTokens;
+        uint256 newLongOpenInterestInTokens = _isLong ? s_longOpenInterestInTokens + _size : s_longOpenInterestInTokens;
 
-        uint256 newShortOpenInterest =
-            _position == Position.Short ? s_shortOpenInterest + (_size * _currentPrice) : s_shortOpenInterest;
+        uint256 newShortOpenInterest = !_isLong ? s_shortOpenInterest + (_size * _currentPrice) : s_shortOpenInterest;
 
         // Calculate the total open interest value
         totalOpenInterestValue = (newLongOpenInterestInTokens * _currentPrice) + newShortOpenInterest;
     }
 
-    function _updateOpenInterests(Position _position, uint256 _size, uint256 _price, OrderAction orderAction)
+    function _updateOpenInterests(bool _isLong, uint256 _size, uint256 _price, PositionAction positionAction)
         internal
     {
-        if (_position == Position.Long) {
-            if (orderAction == OrderAction.Open) {
+        if (_isLong) {
+            if (positionAction == PositionAction.Open) {
                 s_longOpenInterestInTokens += _size;
-            } else if (orderAction == OrderAction.Close) {
+            } else if (positionAction == PositionAction.Close) {
                 s_longOpenInterestInTokens -= _size;
             }
-        } else if (_position == Position.Short) {
+        } else if (!_isLong) {
             uint256 valueChange = _size * _price;
-            if (orderAction == OrderAction.Open) {
+            if (positionAction == PositionAction.Open) {
                 s_shortOpenInterest += valueChange;
-            } else if (orderAction == OrderAction.Close) {
+            } else if (positionAction == PositionAction.Close) {
                 s_shortOpenInterest -= valueChange;
             }
         } else {
@@ -239,8 +234,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     // ==== View/Pure Functions =====
     // =========================
 
-    function userOrderIdByIndex(address user, uint256 index) public view returns (uint256) {
-        return userToOrderIds[user].at(index);
+    function userPositionIdByIndex(address user, uint256 index) public view returns (uint256) {
+        return userToPositionIds[user].at(index);
     }
 
     function getPriceFeed() public view returns (uint256) {
@@ -251,22 +246,22 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         return Oracle.convertPriceFromUsdToBtc(_amount, i_priceFeed);
     }
 
-    function getAverageOpenPrice(uint256 _orderId) public view returns (uint256) {
-        Order memory order = orders[_orderId];
-        if (orders[_orderId].orderId == 0) revert PerpetuEx__InvalidOrderId();
-        return order.totalValue / order.size;
+    function getAverageOpenPrice(uint256 _positionId) public view returns (uint256) {
+        Position memory position = positions[_positionId];
+        if (positions[_positionId].positionId == 0) revert PerpetuEx__InvalidPositionId();
+        return position.totalValue / position.size;
     }
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
         //TODO: Add support for more orders from the same user. For now we block it.
-        uint256 orderId = userToOrderIds[_user].at(0);
-        Order memory order = orders[orderId];
+        uint256 positionId = userToPositionIds[_user].at(0);
+        Position memory position = positions[positionId];
 
-        if (userToOrderIds[_user].length() == 0) {
-            revert PerpetuEx__NoUserOrders();
+        if (userToPositionIds[_user].length() == 0) {
+            revert PerpetuEx__NoUserPositions();
         }
-        int256 userPnl = _calculateUserPnl(order.orderId, order.position);
+        int256 userPnl = _calculateUserPnl(position.positionId, position.isLong);
 
         if (userPnl == 0) {
             return _size.mulDiv(priceFeed, collateral[msg.sender]);
@@ -280,15 +275,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
-    function _calculateUserPnl(uint256 _orderId, Position _position) internal view returns (int256 pnl) {
+    function _calculateUserPnl(uint256 _positionId, bool _isLong) internal view returns (int256 pnl) {
         uint256 currentPrice = getPriceFeed();
-        uint256 averagePrice = getAverageOpenPrice(_orderId);
-        Order storage order = orders[_orderId];
+        uint256 averagePrice = getAverageOpenPrice(_positionId);
+        Position storage position = positions[_positionId];
 
-        if (_position == Position.Long) {
-            pnl = int256(currentPrice - averagePrice) * int256(order.size);
-        } else if (_position == Position.Short) {
-            pnl = int256(averagePrice - currentPrice) * int256(order.size);
+        if (_isLong) {
+            pnl = int256(currentPrice - averagePrice) * int256(position.size);
+        } else if (!_isLong) {
+            pnl = int256(averagePrice - currentPrice) * int256(position.size);
         } else {
             revert PerpetuEx__NoPositionChosen();
         }
