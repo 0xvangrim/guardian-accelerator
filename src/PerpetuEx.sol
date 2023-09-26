@@ -93,9 +93,14 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         shares = super.withdraw(assets, receiver, owner);
     }
 
+    function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
+        assets = super.mint(shares, receiver);
+        s_totalLiquidityDeposited += assets;
+    }
+
     function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
-        s_totalLiquidityDeposited -= assets;
         assets = super.redeem(shares, receiver, owner);
+        s_totalLiquidityDeposited -= assets;
     }
 
     function createOrder(uint256 _size, Position _position) external {
