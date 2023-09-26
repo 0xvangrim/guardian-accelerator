@@ -26,15 +26,18 @@ contract PerpetuExTest is Test, IPerpetuEx {
     HelperConfig public helperConfig;
 
     address public constant USER = address(21312312312312312312);
+    // create a liquidity provider account
+    address public constant LP = address(123123123123123123123);
 
     // USDC contract address on mainnet
     address usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
 
     // User mock params
     uint256 SIZE = 1;
-    Position POSITION_LONG = Position(0);
-    Position POSITION_SHORT = Position(1);
     uint256 COLLATERAL = 1000e6;
+
+    // LP mock params
+    uint256 LIQUIDITY = 1000000e6;
 
     function setUp() external {
         // spoof .configureMinter() call with the master minter account
@@ -43,16 +46,31 @@ contract PerpetuExTest is Test, IPerpetuEx {
         IUSDC(usdc).configureMinter(address(this), type(uint256).max);
         // mint max to the test contract (or an external user)
         IUSDC(usdc).mint(USER, COLLATERAL);
+        // mint max to the LP account
+        IUSDC(usdc).mint(LP, LIQUIDITY);
         DeployPerpetuEx deployer = new DeployPerpetuEx();
         (perpetuEx, helperConfig) = deployer.run();
 
         vm.prank(USER);
-        IUSDC(usdc).approve(address(perpetuEx), type(uint256).max);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+    }
+    // create a modifier to add liquidity
+
+    modifier addLiquidity(uint256 amount) {
+        vm.startPrank(LP);
+        // approve the PerpetuEx contract to spend USDC
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        perpetuEx.deposit(amount, LP);
+        vm.stopPrank();
+        _;
     }
 
     function testBalance() public {
         uint256 balance = IERC20(usdc).balanceOf(USER);
         assertEq(balance, COLLATERAL);
+
+        uint256 LpBalance = IERC20(usdc).balanceOf(LP);
+        assertEq(LpBalance, LIQUIDITY);
     }
 
     //@func depositCollateral
@@ -82,5 +100,13 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.stopPrank();
         assertEq(perpetuEx.collateral(USER), 0);
     }
-    //@func
+
+    function testDeposit() public {
+        vm.startPrank(LP);
+        // approve the PerpetuEx contract to spend USDC
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        perpetuEx.deposit(LIQUIDITY, LP);
+        vm.stopPrank();
+        assertEq(perpetuEx.totalAssets(), LIQUIDITY);
+    }
 }
