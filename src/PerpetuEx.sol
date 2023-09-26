@@ -160,6 +160,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
+        if (_totalOpenInterest(position.isLong, _size, currentPrice) >= _updatedLiquidity()) {
+            revert PerpetuEx__InsufficientLiquidity();
+        }
         // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
         // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
