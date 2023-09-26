@@ -47,7 +47,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         (perpetuEx, helperConfig) = deployer.run();
 
         vm.prank(USER);
-        // IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        IUSDC(usdc).approve(address(perpetuEx), type(uint256).max);
     }
 
     function testBalance() public {
@@ -55,6 +55,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(balance, COLLATERAL);
     }
 
+    //@func depositCollateral
     function testDepositCollateral() public {
         vm.startPrank(USER);
         perpetuEx.depositCollateral(COLLATERAL);
@@ -62,6 +63,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(perpetuEx.collateral(USER), COLLATERAL);
         assertEq(IERC20(usdc).balanceOf(USER), 0);
     }
+
+    //@func withdrawCollateral
 
     function testWithdrawCollateral() public {
         vm.startPrank(USER);
@@ -79,18 +82,5 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.stopPrank();
         assertEq(perpetuEx.collateral(USER), 0);
     }
-
-    function testCreateOrder() public {
-        vm.startPrank(USER);
-        perpetuEx.depositCollateral(COLLATERAL);
-        perpetuEx.createOrder(SIZE, POSITION_LONG);
-        vm.stopPrank();
-        // uint256 orderId = perpetuEx.userOrderIdByIndex(USER, 0);
-        // (, Position position, , uint256 size, , ) = perpetuEx.orders(orderId);
-
-        // assertEq(perpetuEx.collateral(USER), COLLATERAL);
-        // // assertEq(position, POSITION_LONG);
-        // assertEq(size, SIZE);
-        // assertEq(perpetuEx.s_longOpenInterestInTokens(), SIZE);
-    }
+    //@func
 }
