@@ -8,20 +8,15 @@ interface IPerpetuEx {
     error PerpetuEx__InvalidSize();
     error PerpetuEx__InvalidAmount();
     error PerpetuEx__InsufficientCollateral();
-    error PerpetuEx__InvalidOrder();
+    error PerpetuEx__InvalidPosition();
     error PerpetuEx__NotOwner();
     error PerpetuEx__NoPositionChosen();
-    error PerpetuEx__InvalidOrderId();
+    error PerpetuEx__InvalidPositionId();
     error PerpetuEx__OpenPositionExists();
     error PerpetuEx__InsufficientLiquidity();
-    error PerpetuEx__NoUserOrders();
+    error PerpetuEx__NoUserPositions();
 
-    enum Position {
-        Long,
-        Short
-    }
-
-    enum OrderAction {
+    enum PositionAction {
         Open,
         Close
     }
