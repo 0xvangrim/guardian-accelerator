@@ -101,9 +101,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
-        uint256 newTotalLiquidity = s_totalLiquidityDeposited + assets;
         assets = super.mint(shares, receiver);
-        s_totalLiquidityDeposited = newTotalLiquidity;
+        s_totalLiquidityDeposited += assets;
     }
 
     function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
