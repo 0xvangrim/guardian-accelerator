@@ -15,6 +15,7 @@ import {IPerpetuEx} from "./IPerpetuEx.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
+import {console} from "forge-std/Console.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
     struct Position {
@@ -94,13 +95,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
-        assets = super.mint(shares, receiver);
         s_totalLiquidityDeposited += assets;
+        assets = super.mint(shares, receiver);
     }
 
     function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
-        assets = super.redeem(shares, receiver, owner);
         s_totalLiquidityDeposited -= assets;
+        assets = super.redeem(shares, receiver, owner);
     }
 
     function createPosition(uint256 _size, bool _isLong) external {
@@ -233,6 +234,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
+    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
+        if (totalSupply() == 0) return assets;
+        return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), totalAssets() + 1, rounding);
+    }
+
     // =========================
     // ==== View/Pure Functions =====
     // =========================
@@ -294,7 +300,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function maxWithdraw(address owner) public view override returns (uint256 maxWithdrawAllowed) {
         uint256 ownerAssets = super._convertToAssets(balanceOf(owner), Math.Rounding.Floor);
-
+        console.log("ownerAssetszzzzz", ownerAssets);
         uint256 updatedLiquidity = _updatedLiquidity();
 
         if (ownerAssets >= updatedLiquidity) {

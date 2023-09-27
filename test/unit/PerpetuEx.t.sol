@@ -53,6 +53,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
         vm.prank(USER);
         IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        vm.prank(LP);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
     }
     // create a modifier to add liquidity
 
@@ -61,6 +63,13 @@ contract PerpetuExTest is Test, IPerpetuEx {
         // approve the PerpetuEx contract to spend USDC
         IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
         perpetuEx.deposit(amount, LP);
+        vm.stopPrank();
+        _;
+    }
+
+    modifier addCollateral(uint256 amount) {
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(amount);
         vm.stopPrank();
         _;
     }
@@ -83,7 +92,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
     }
 
     //@func withdrawCollateral
-
     function testWithdrawCollateral() public {
         vm.startPrank(USER);
         perpetuEx.depositCollateral(COLLATERAL);
@@ -101,12 +109,28 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(perpetuEx.collateral(USER), 0);
     }
 
+    //@func deposit
     function testDeposit() public {
         vm.startPrank(LP);
-        // approve the PerpetuEx contract to spend USDC
-        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
-        perpetuEx.deposit(LIQUIDITY, LP);
+        uint256 shares = perpetuEx.deposit(LIQUIDITY, LP);
+        console.log("SHARES", shares);
+        console.log("totalASSETS", perpetuEx.totalAssets());
+        console.log("totalSupply", perpetuEx.totalSupply());
         vm.stopPrank();
         assertEq(perpetuEx.totalAssets(), LIQUIDITY);
+        assertEq(IERC20(usdc).balanceOf(LP), 0);
+        assertEq(perpetuEx.s_totalLiquidityDeposited(), LIQUIDITY);
+        assertEq(perpetuEx.balanceOf(LP), LIQUIDITY);
+    }
+
+    //@func redeem
+    function testRedeem() public addLiquidity(LIQUIDITY) {
+        vm.startPrank(LP);
+        uint256 shares = perpetuEx.balanceOf(LP);
+        perpetuEx.redeem(shares, LP, LP);
+        assertEq(shares, 0);
+        assertEq(IERC20(usdc).balanceOf(LP), LIQUIDITY);
+        assertEq(perpetuEx.s_totalLiquidityDeposited(), 0);
+        vm.stopPrank();
     }
 }
