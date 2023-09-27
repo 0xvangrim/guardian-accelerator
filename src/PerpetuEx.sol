@@ -40,6 +40,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
     uint256 private constant MAX_LEVERAGE = 20;
     uint16 private constant DEAD_SHARES = 1000;
+    // price feed decimals
+    uint256 private constant PRICE_FEED_DECIMALS = 10 ** 18;
+    uint256 private constant USDC_DECIMALS = 10 ** 6;
 
     uint256 private s_nonce;
     uint256 public s_totalLiquidityDeposited;
@@ -257,24 +260,27 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
+
+        if (userToPositionIds[_user].length() == 0) {
+            return (_size.mulDiv(priceFeed, collateral[_user])) / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
+        }
         //TODO: Add support for more orders from the same user. For now we block it.
         uint256 positionId = userToPositionIds[_user].at(0);
         Position memory position = positions[positionId];
 
-        if (userToPositionIds[_user].length() == 0) {
-            revert PerpetuEx__NoUserPositions();
-        }
         int256 userPnl = _calculateUserPnl(position.positionId, position.isLong);
 
         if (userPnl == 0) {
-            return _size.mulDiv(priceFeed, collateral[msg.sender]);
+            return (_size.mulDiv(priceFeed, collateral[msg.sender])) / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
         }
         if (userPnl > 0) {
-            userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender] + uint256(userPnl));
+            userLeverage = (_size.mulDiv(priceFeed, collateral[msg.sender] + uint256(userPnl)))
+                / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
         }
         if (userPnl < 0) {
             uint256 unsignedPnl = SignedMath.abs(userPnl);
-            userLeverage = _size.mulDiv(priceFeed, collateral[msg.sender] - unsignedPnl);
+            userLeverage =
+                (_size.mulDiv(priceFeed, collateral[msg.sender] - unsignedPnl)) / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
         }
     }
 
