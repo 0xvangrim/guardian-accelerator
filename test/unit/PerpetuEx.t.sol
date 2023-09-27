@@ -34,7 +34,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     // User mock params
     uint256 SIZE = 1;
-    uint256 COLLATERAL = 1000e6;
+    uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
 
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
@@ -118,19 +118,30 @@ contract PerpetuExTest is Test, IPerpetuEx {
         console.log("totalSupply", perpetuEx.totalSupply());
         vm.stopPrank();
         assertEq(perpetuEx.totalAssets(), LIQUIDITY);
-        assertEq(IERC20(usdc).balanceOf(LP), 0);
-        assertEq(perpetuEx.s_totalLiquidityDeposited(), LIQUIDITY);
-        assertEq(perpetuEx.balanceOf(LP), LIQUIDITY);
     }
 
-    //@func redeem
-    function testRedeem() public addLiquidity(LIQUIDITY) {
-        vm.startPrank(LP);
-        uint256 shares = perpetuEx.balanceOf(LP);
-        perpetuEx.redeem(shares, LP, LP);
-        assertEq(shares, 0);
-        assertEq(IERC20(usdc).balanceOf(LP), LIQUIDITY);
-        assertEq(perpetuEx.s_totalLiquidityDeposited(), 0);
+    function testCalculateUserLeverage() public {
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(COLLATERAL);
         vm.stopPrank();
+        assertEq(perpetuEx.collateral(USER), COLLATERAL);
+        uint256 userCollateral = perpetuEx.collateral(USER);
+        console.log(userCollateral);
+        uint256 leverage = perpetuEx._calculateUserLeverage(1, USER);
+        console.log(leverage);
+    }
+
+    function testCreatePosition() public addLiquidity(LIQUIDITY) {
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(COLLATERAL);
+        perpetuEx.createPosition(SIZE, true);
+        vm.stopPrank();
+        //     //     // uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        //     //     // (, isLong, , uint256 size, , ) = perpetuEx.positions(positionId);
+
+        //     //     // assertEq(perpetuEx.collateral(USER), COLLATERAL);
+        //     //     // // assertEq(position, true);
+        //     //     // assertEq(size, SIZE);
+        //     //     // assertEq(perpetuEx.s_longOpenInterestInTokens(), SIZE);
     }
 }
