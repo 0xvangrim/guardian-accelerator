@@ -38,6 +38,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     uint256 SIZE = 1;
     uint256 SIZE_2 = 2;
     uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
+    uint256 DECREASE_COLLATERAL = 1500e6;
 
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
@@ -178,6 +179,10 @@ contract PerpetuExTest is Test, IPerpetuEx {
     //////////////////// TRADERS /////////////////////
     //////////////////////////////////////////////////
 
+    /////////////////////
+    /// Create Position
+    /////////////////////
+
     function testCreateLongPosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
         vm.startPrank(USER);
         perpetuEx.createPosition(SIZE, true);
@@ -216,6 +221,10 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(totalValue, SIZE * averageOpenPrice);
     }
 
+    /////////////////////
+    // Close Position
+    /////////////////////
+
     // TODO: test with price increasing and decreasing
     function testClosePosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
         vm.expectRevert();
@@ -236,6 +245,10 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.stopPrank();
     }
 
+    ///////////////////
+    // Increase Size
+    ///////////////////
+
     function testIncreaseSize() public addLiquidity(LIQUIDITY) depositCollateralOpenLongPosition(COLLATERAL) {
         vm.startPrank(USER);
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
@@ -253,10 +266,14 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(longOpenInterestInTokens, expectedSize);
     }
 
+    ////////
+    // PnL
+    ////////
+
     // Needs it own setup
     // function testUserPnlIncreaseIfBtcPriceIncrease() public {
     //     // setup
-    //     MockV3Aggregator mockV3Aggregator = new MockV3Aggregator(18, 20000e18);
+    //     MockV3Aggregator mockV3Aggregator = new MockV3Aggregator(8, 2000e8);
     //     PerpetuEx perpetuExBtcIncrease = new PerpetuEx(address(mockV3Aggregator), IERC20(usdc));
 
     //     // Arrange - LP
@@ -268,15 +285,22 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     //     // Arrange - USER
     //     vm.startPrank(USER);
+    //     IERC20(usdc).approve(address(perpetuExBtcIncrease), type(uint256).max);
     //     perpetuExBtcIncrease.depositCollateral(COLLATERAL);
     //     perpetuExBtcIncrease.createPosition(SIZE, true);
     //     vm.stopPrank();
 
-    //     int256 btcUsdcUpdatedPrice = 30000e18;
-    //     MockV3Aggregator(priceFeed).updateAnswer(btcUsdcUpdatedPrice);
+    //     int256 btcUsdUpdatedPrice = 3000e8;
+    //     MockV3Aggregator(priceFeed).updateAnswer(btcUsdUpdatedPrice);
     // }
 
+    //////////////////
+    // Decrease Size
+    //////////////////
+
     function testDecreaseSize() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
+        uint256 userBalanceBedore = IERC20(usdc).balanceOf(USER);
+        console.log("userBalanceBefore", userBalanceBedore);
         vm.startPrank(USER);
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         perpetuEx.decreaseSize(positionId, SIZE);
@@ -289,5 +313,50 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(totalValue, expectedTotalValue);
         uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
         assertEq(longOpenInterestInTokens, expectedSize);
+    }
+
+    ///////////////////////
+    // Decrease Collateral
+    ///////////////////////
+
+    function testDecreaseCollateral() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
+        vm.startPrank(USER);
+        uint256 collateralBefore = perpetuEx.collateral(USER);
+        console.log("collateralBefore", collateralBefore);
+        perpetuEx.decreaseCollateral(DECREASE_COLLATERAL);
+        uint256 collateralAfter = perpetuEx.collateral(USER);
+        console.log("collateralAfter", collateralAfter);
+        vm.stopPrank();
+    }
+
+    function testDecreaseCollateralInsufficient() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
+        uint256 leverage = perpetuEx.getLeverage(USER);
+        console.log("leverage before", leverage);
+
+        vm.startPrank(USER);
+        uint256 collateral = perpetuEx.collateral(USER);
+        console.log("collateralBefore", collateral);
+
+        perpetuEx.decreaseCollateral(COLLATERAL / 2);
+        collateral = perpetuEx.collateral(USER);
+        leverage = perpetuEx.getLeverage(USER);
+        console.log("collateralAfter", collateral);
+        console.log("leverage after", leverage);
+
+        perpetuEx.decreaseCollateral(COLLATERAL / 6);
+        collateral = perpetuEx.collateral(USER);
+        leverage = perpetuEx.getLeverage(USER);
+        console.log("collateralAfter 2", collateral);
+        console.log("leverage after 2", leverage);
+
+        perpetuEx.decreaseCollateral(COLLATERAL / 17);
+        collateral = perpetuEx.collateral(USER);
+        leverage = perpetuEx.getLeverage(USER);
+        console.log("collateralAfter 3", collateral);
+        console.log("leverage after 3", leverage);
+
+        vm.expectRevert();
+        perpetuEx.decreaseCollateral(COLLATERAL / 20);
+        vm.stopPrank();
     }
 }

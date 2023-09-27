@@ -85,13 +85,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         i_usdc.safeTransfer(msg.sender, withdrawalAmount);
     }
 
-    //TODO: implement this function
-    function decreaseCollateral(uint256 amount) external {
-        if (collateral[msg.sender] == 0) {
-            revert PerpetuEx__InsufficientCollateral();
-        }
-    }
-
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
         s_totalLiquidityDeposited += assets;
         shares = super.deposit(assets, receiver);
@@ -235,6 +228,25 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
         position.collateral += _collateral;
         i_usdc.safeTransferFrom(msg.sender, address(this), _collateral);
+    }
+
+    function decreaseCollateral(uint256 _amount) external {
+        if (collateral[msg.sender] < _amount) {
+            revert PerpetuEx__InsufficientCollateral();
+        }
+        if (_amount == 0) revert PerpetuEx__InvalidAmount();
+
+        // calculate leverage after collateral decrease
+        uint256 userCollateral = collateral[msg.sender];
+        collateral[msg.sender] = userCollateral - _amount;
+        Position memory position = positions[userToPositionIds[msg.sender].at(0)];
+        uint256 size = position.size;
+        uint256 updatedLeverage = _calculateUserLeverage(size, msg.sender);
+        // check if leverage is above 20x
+        if (updatedLeverage > MAX_LEVERAGE) {
+            revert PerpetuEx__InvalidAmount();
+        }
+        i_usdc.safeTransfer(msg.sender, _amount);
     }
 
     /// ====================================
@@ -408,5 +420,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             uint256 totalPnl = SignedMath.abs(s_totalPnl);
             assets = s_totalLiquidityDeposited + totalPnl;
         }
+    }
+
+    function getLeverage(address _user) public view returns (uint256 leverage) {
+        Position memory position = positions[userToPositionIds[_user].at(0)];
+        uint256 size = position.size;
+        leverage = _calculateUserLeverage(size, _user);
     }
 }
