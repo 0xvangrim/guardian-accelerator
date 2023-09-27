@@ -56,7 +56,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         i_usdc = IERC20(_usdc);
 
         //Avoiding the inflation attack by sending shares to the shadow realm
-        // _mint(address(0), DEAD_SHARES);
+        _mint(address(this), DEAD_SHARES);
+        _burn(address(this), DEAD_SHARES);
     }
 
     mapping(address => uint256) public collateral; //User to collateral mapping
@@ -88,23 +89,25 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
-        s_totalLiquidityDeposited += assets;
+        uint256 newTotalLiquidity = s_totalLiquidityDeposited + assets;
         shares = super.deposit(assets, receiver);
+        s_totalLiquidityDeposited = newTotalLiquidity;
     }
 
     function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
-        s_totalLiquidityDeposited -= assets;
+        uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
         shares = super.withdraw(assets, receiver, owner);
+        s_totalLiquidityDeposited = newTotalLiquidity;
     }
 
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
-        s_totalLiquidityDeposited += assets;
         assets = super.mint(shares, receiver);
+        s_totalLiquidityDeposited += assets;
     }
 
     function redeem(uint256 shares, address receiver, address owner) public override returns (uint256 assets) {
-        s_totalLiquidityDeposited -= assets;
         assets = super.redeem(shares, receiver, owner);
+        s_totalLiquidityDeposited -= assets;
     }
 
     function createPosition(uint256 _size, bool _isLong) external {
@@ -264,6 +267,22 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         return position.totalValue / position.size;
     }
 
+    function getTotalPnl() public view returns (int256) {
+        return s_totalPnl;
+    }
+
+    function getTotalLiquidityDeposited() public view returns (uint256) {
+        return s_totalLiquidityDeposited;
+    }
+
+    function getMaxUtilizationPercentage() public pure returns (uint256) {
+        return MAX_UTILIZATION_PERCENTAGE;
+    }
+
+    function getMaxUtilizationPercentageDecimals() public pure returns (uint256) {
+        return MAX_UTILIZATION_PERCENTAGE_DECIMALS;
+    }
+
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
 
@@ -306,11 +325,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function maxWithdraw(address owner) public view override returns (uint256 maxWithdrawAllowed) {
         uint256 ownerAssets = super._convertToAssets(balanceOf(owner), Math.Rounding.Floor);
-        console.log("ownerAssetszzzzz", ownerAssets);
         uint256 updatedLiquidity = _updatedLiquidity();
-
         if (ownerAssets >= updatedLiquidity) {
-            return maxWithdrawAllowed = ownerAssets - updatedLiquidity;
+            return maxWithdrawAllowed = updatedLiquidity;
         }
 
         if (ownerAssets < updatedLiquidity) {
@@ -324,7 +341,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 updatedLiquidity = _updatedLiquidity();
 
         if (ownerAssets >= updatedLiquidity) {
-            uint256 maxAssetsAllowed = ownerAssets - updatedLiquidity;
+            uint256 maxAssetsAllowed = updatedLiquidity;
             return maxRedeemAllowed = super._convertToShares(maxAssetsAllowed, Math.Rounding.Floor);
         }
 
