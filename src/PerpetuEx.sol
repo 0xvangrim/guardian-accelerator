@@ -38,11 +38,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     // 20% of the liquidity reserved for safety reasons
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
-    uint256 private constant MAX_LEVERAGE = 20;
+    uint256 private constant MAX_LEVERAGE = 20 * 10 ** 4;
+    uint256 private constant DECIMALS_DELTA = 10 ** 12; // btc decimals - usdc decimals
+    uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
     uint16 private constant DEAD_SHARES = 1000;
-    // price feed decimals
-    uint256 private constant PRICE_FEED_DECIMALS = 10 ** 18;
-    uint256 private constant USDC_DECIMALS = 10 ** 6;
 
     uint256 private s_nonce;
     uint256 public s_totalLiquidityDeposited;
@@ -86,6 +85,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         i_usdc.safeTransfer(msg.sender, withdrawalAmount);
     }
 
+    //TODO: implement this function
+    function decreaseCollateral(uint256 amount) external {
+        if (collateral[msg.sender] == 0) {
+            revert PerpetuEx__InsufficientCollateral();
+        }
+    }
+
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
         s_totalLiquidityDeposited += assets;
         shares = super.deposit(assets, receiver);
@@ -114,6 +120,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (userToPositionIds[msg.sender].length() > 0) {
             revert PerpetuEx__OpenPositionExists();
         }
+        //TODO: compute positionId keccak256(abi.encode(owner + nonce)) to avoid position id collision
         uint256 currentPositionId = ++s_nonce;
         uint256 currentPrice = getPriceFeed();
         Position memory newPosition = Position({
@@ -125,11 +132,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             isLong: _isLong
         });
         // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
-        if (_totalOpenInterest(_isLong, _size, currentPrice) >= _updatedLiquidity()) {
-            revert PerpetuEx__InsufficientLiquidity();
-        }
         // Update the actual open interests
         _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
+
+        uint256 updatedLiquidity = _updatedLiquidity();
+        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
+            revert PerpetuEx__InsufficientLiquidity();
+        }
+
+        // _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
         positions[currentPositionId] = newPosition;
         userToPositionIds[msg.sender].add(currentPositionId);
     }
@@ -163,16 +174,59 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
-        if (_totalOpenInterest(position.isLong, _size, currentPrice) >= _updatedLiquidity()) {
+
+        // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
+        _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
+        // _updateOpenInterestsIncrease(position.isLong, _size, currentPrice);
+
+        uint256 updatedLiquidity = _updatedLiquidity();
+        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
         }
+
         // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
         // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
-        _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
+        // _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
         // Update the total value and size of the order
         position.totalValue += addedValue;
         position.size += _size;
+    }
+
+    function decreaseSize(uint256 _positionId, uint256 _sizeDelta) external {
+        Position storage position = positions[_positionId];
+        uint256 currentPrice = getPriceFeed();
+        if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
+        if (_sizeDelta == 0 || _sizeDelta >= position.size) {
+            revert PerpetuEx__InvalidSize();
+        }
+        // Update open interests
+        _updateOpenInterestsDecrease(position.isLong, _sizeDelta, currentPrice);
+
+        // compute pnl for user and add to total pnl
+        int256 pnl = _calculateUserPnl(_positionId, position.isLong);
+        //update total pnl
+        s_totalPnl += pnl;
+        _updatedLiquidity();
+
+        uint256 averagePrice = getAverageOpenPrice(_positionId);
+        if (pnl >= 0) {
+            // send profits to user
+            uint256 profits = uint256(pnl);
+            position.size -= _sizeDelta;
+            //TODO: make sure I should use averagePrice or currentPrice
+            position.totalValue -= _sizeDelta * averagePrice;
+            i_usdc.safeTransfer(msg.sender, profits);
+        } else if (pnl < 0) {
+            uint256 unsignedPnl = SignedMath.abs(pnl);
+            position.size -= _sizeDelta;
+            position.totalValue -= _sizeDelta * averagePrice;
+            collateral[msg.sender] -= unsignedPnl;
+            // check new leverage even if it should be fine
+            if (_calculateUserLeverage(position.size - _sizeDelta, msg.sender) > MAX_LEVERAGE) {
+                revert PerpetuEx__InvalidSize();
+            }
+        }
     }
 
     function increaseCollateral(uint256 _positionId, uint256 _collateral) external {
@@ -195,9 +249,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 totalPnl = SignedMath.abs(s_totalPnl);
         if (s_totalPnl >= 0) {
             updatedLiquidity = liquidityReserveRestriction - totalPnl;
+            return updatedLiquidity;
         }
         if (s_totalPnl < 0) {
             updatedLiquidity = liquidityReserveRestriction + totalPnl;
+            return updatedLiquidity;
         }
     }
 
@@ -236,6 +292,18 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
+    // TODO: refactor by implementing this logic inside _updateOpenInterests using string literals
+    function _updateOpenInterestsDecrease(bool _isLong, uint256 _sizeDelta, uint256 _price) internal {
+        if (_isLong) {
+            s_longOpenInterestInTokens -= _sizeDelta;
+        } else if (!_isLong) {
+            uint256 valueChange = _sizeDelta * _price;
+            s_shortOpenInterest -= valueChange;
+        } else {
+            revert PerpetuEx__NoPositionChosen();
+        }
+    }
+
     // =========================
     // ==== View/Pure Functions =====
     // =========================
@@ -260,27 +328,30 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
+        uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION;
 
+        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA;
         if (userToPositionIds[_user].length() == 0) {
-            return (_size.mulDiv(priceFeed, collateral[_user])) / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
+            userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);
+            return userLeverage;
         }
         //TODO: Add support for more orders from the same user. For now we block it.
         uint256 positionId = userToPositionIds[_user].at(0);
         Position memory position = positions[positionId];
-
         int256 userPnl = _calculateUserPnl(position.positionId, position.isLong);
 
         if (userPnl == 0) {
-            return (_size.mulDiv(priceFeed, collateral[msg.sender])) / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
+            userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);
+            return userLeverage;
         }
         if (userPnl > 0) {
-            userLeverage = (_size.mulDiv(priceFeed, collateral[msg.sender] + uint256(userPnl)))
-                / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
+            userLeverage = (_size.mulDiv(priceFeedPrecisionAdjusted, userCollateral + uint256(userPnl)));
+            return userLeverage;
         }
         if (userPnl < 0) {
             uint256 unsignedPnl = SignedMath.abs(userPnl);
-            userLeverage =
-                (_size.mulDiv(priceFeed, collateral[msg.sender] - unsignedPnl)) / (PRICE_FEED_DECIMALS - USDC_DECIMALS);
+            userLeverage = (_size.mulDiv(priceFeedPrecisionAdjusted, userCollateral - unsignedPnl));
+            return userLeverage;
         }
     }
 

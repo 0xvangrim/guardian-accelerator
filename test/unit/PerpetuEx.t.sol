@@ -8,6 +8,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPerpetuEx} from "../../src/IPerpetuEx.sol";
+import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
 
 interface IUSDC {
     function balanceOf(address account) external view returns (uint256);
@@ -24,6 +25,7 @@ interface IUSDC {
 contract PerpetuExTest is Test, IPerpetuEx {
     PerpetuEx public perpetuEx;
     HelperConfig public helperConfig;
+    address public priceFeed;
 
     address public constant USER = address(21312312312312312312);
     // create a liquidity provider account
@@ -34,10 +36,14 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     // User mock params
     uint256 SIZE = 1;
+    uint256 SIZE_2 = 2;
     uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
 
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
+
+    uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
+    uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
 
     function setUp() external {
         // spoof .configureMinter() call with the master minter account
@@ -50,11 +56,22 @@ contract PerpetuExTest is Test, IPerpetuEx {
         IUSDC(usdc).mint(LP, LIQUIDITY);
         DeployPerpetuEx deployer = new DeployPerpetuEx();
         (perpetuEx, helperConfig) = deployer.run();
+        (priceFeed,) = helperConfig.activeNetworkConfig();
 
         vm.prank(USER);
         IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
     }
-    // create a modifier to add liquidity
+
+    ///////////////////////////////////////////////////
+    /////////////////// MODIFIERS ////////////////////
+    /////////////////////////////////////////////////
+
+    modifier depositCollateral(uint256 amount) {
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(amount);
+        vm.stopPrank();
+        _;
+    }
 
     modifier addLiquidity(uint256 amount) {
         vm.startPrank(LP);
@@ -64,6 +81,30 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.stopPrank();
         _;
     }
+
+    modifier depositCollateralOpenLongPosition(uint256 amount) {
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(amount);
+        perpetuEx.createPosition(SIZE, true);
+        vm.stopPrank();
+        _;
+    }
+
+    modifier longPositionOpened(uint256 liquidity, uint256 amount, uint256 size) {
+        vm.startPrank(LP);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        perpetuEx.deposit(liquidity, LP);
+        vm.stopPrank();
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(amount);
+        perpetuEx.createPosition(size, true);
+        vm.stopPrank();
+        _;
+    }
+
+    ///////////////////////////////////////////////////
+    ////////////// LUIQUIDITY PROVIDERS ///////////////
+    ///////////////////////////////////////////////////
 
     function testBalance() public {
         uint256 balance = IERC20(usdc).balanceOf(USER);
@@ -107,29 +148,146 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(perpetuEx.totalAssets(), LIQUIDITY);
     }
 
-    // to test it se _calculateUserLeverage to public
-    function testCalculateUserLeverage() public {
-        vm.startPrank(USER);
-        perpetuEx.depositCollateral(COLLATERAL);
-        vm.stopPrank();
-        assertEq(perpetuEx.collateral(USER), COLLATERAL);
-        uint256 userCollateral = perpetuEx.collateral(USER);
-        console.log(userCollateral);
-        uint256 leverage = perpetuEx._calculateUserLeverage(1, USER);
-        console.log(leverage);
-    }
+    ///////////////////////////////////////////////////
+    /////////////// INTERNAL FUNCTIONS ////////////////
+    ///////////////////////////////////////////////////
 
-    function testCreatePosition() public addLiquidity(LIQUIDITY) {
+    /////// set _calculateUserLeverage as public ///////
+    // function testCalculateUserLeverage() public addLiquidity(LIQUIDITY) {
+    //     vm.startPrank(USER);
+    //     perpetuEx.depositCollateral(COLLATERAL);
+    //     vm.stopPrank();
+    //     assertEq(perpetuEx.collateral(USER), COLLATERAL);
+    //     uint256 userCollateral = perpetuEx.collateral(USER);
+    //     console.log(userCollateral);
+    //     uint256 leverage = perpetuEx._calculateUserLeverage(1, USER);
+    // 26218
+    // console.log(leverage);
+    // }
+
+    /////// to test it set _updatedLiquidity as public ///////
+    // function testUpdateLiquidity() public addLiquidity(LIQUIDITY) {
+    //     uint256 updatedLiquidity = perpetuEx._updatedLiquidity();
+    //     console.log(updatedLiquidity);
+    //     uint256 expectedValue = LIQUIDITY * MAX_UTILIZATION_PERCENTAGE / MAX_UTILIZATION_PERCENTAGE_DECIMALS;
+    //     // 800000000000
+    //     assertEq(updatedLiquidity, expectedValue);
+    // }
+
+    ///////////////////////////////////////////////////
+    //////////////////// TRADERS /////////////////////
+    //////////////////////////////////////////////////
+
+    function testCreateLongPosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
         vm.startPrank(USER);
-        perpetuEx.depositCollateral(COLLATERAL);
         perpetuEx.createPosition(SIZE, true);
         vm.stopPrank();
-        //     //     // uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
-        //     //     // (, isLong, , uint256 size, , ) = perpetuEx.positions(positionId);
 
-        //     //     // assertEq(perpetuEx.collateral(USER), COLLATERAL);
-        //     //     // // assertEq(position, true);
-        //     //     // assertEq(size, SIZE);
-        //     //     // assertEq(perpetuEx.s_longOpenInterestInTokens(), SIZE);
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        (, bool isLong, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+
+        assert(isLong);
+        assertEq(perpetuEx.collateral(USER), COLLATERAL);
+        assertEq(size, SIZE);
+        uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
+        assertEq(longOpenInterestInTokens, SIZE);
+        uint256 shortOpenInterest = perpetuEx.s_shortOpenInterest();
+        assertEq(shortOpenInterest, 0);
+        uint256 averageOpenPrice = perpetuEx.getAverageOpenPrice(positionId);
+        assertEq(totalValue, SIZE * averageOpenPrice);
+    }
+
+    function testCreateShortPosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
+        vm.startPrank(USER);
+        perpetuEx.createPosition(SIZE, false);
+        vm.stopPrank();
+
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        (, bool isLong, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+
+        assert(!isLong);
+        assertEq(perpetuEx.collateral(USER), COLLATERAL);
+        assertEq(size, SIZE);
+        uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
+        assertEq(longOpenInterestInTokens, 0);
+        uint256 shortOpenInterest = perpetuEx.s_shortOpenInterest();
+        uint256 averageOpenPrice = perpetuEx.getAverageOpenPrice(positionId);
+        assertEq(shortOpenInterest, SIZE * averageOpenPrice);
+        assertEq(totalValue, SIZE * averageOpenPrice);
+    }
+
+    // TODO: test with price increasing and decreasing
+    function testClosePosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
+        vm.expectRevert();
+        vm.startPrank(USER);
+        perpetuEx.closePosition(0);
+        perpetuEx.createPosition(SIZE, true);
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        perpetuEx.closePosition(positionId);
+        vm.stopPrank();
+        uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
+        uint256 shortOpenInterest = perpetuEx.s_shortOpenInterest();
+        assertEq(longOpenInterestInTokens, 0);
+        assertEq(shortOpenInterest, 0);
+
+        vm.expectRevert();
+        vm.startPrank(USER);
+        perpetuEx.closePosition(0);
+        vm.stopPrank();
+    }
+
+    function testIncreaseSize() public addLiquidity(LIQUIDITY) depositCollateralOpenLongPosition(COLLATERAL) {
+        vm.startPrank(USER);
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        perpetuEx.increaseSize(positionId, SIZE);
+        vm.stopPrank();
+        (,, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+        // 52490,303972840000000000 * 10 **18
+        // console.log(totalValue);
+        uint256 expectedSize = SIZE + SIZE;
+        uint256 averagePrice = perpetuEx.getAverageOpenPrice(positionId);
+        uint256 expectedTotalValue = expectedSize * averagePrice;
+        assertEq(size, expectedSize);
+        assertEq(totalValue, expectedTotalValue);
+        uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
+        assertEq(longOpenInterestInTokens, expectedSize);
+    }
+
+    // Needs it own setup
+    // function testUserPnlIncreaseIfBtcPriceIncrease() public {
+    //     // setup
+    //     MockV3Aggregator mockV3Aggregator = new MockV3Aggregator(18, 20000e18);
+    //     PerpetuEx perpetuExBtcIncrease = new PerpetuEx(address(mockV3Aggregator), IERC20(usdc));
+
+    //     // Arrange - LP
+    //     // [FAIL. Reason: ERC20: transfer amount exceeds balance]
+    //     vm.startPrank(LP);
+    //     IERC20(usdc).approve(address(perpetuExBtcIncrease), type(uint256).max);
+    //     perpetuExBtcIncrease.deposit(LIQUIDITY, LP);
+    //     vm.stopPrank();
+
+    //     // Arrange - USER
+    //     vm.startPrank(USER);
+    //     perpetuExBtcIncrease.depositCollateral(COLLATERAL);
+    //     perpetuExBtcIncrease.createPosition(SIZE, true);
+    //     vm.stopPrank();
+
+    //     int256 btcUsdcUpdatedPrice = 30000e18;
+    //     MockV3Aggregator(priceFeed).updateAnswer(btcUsdcUpdatedPrice);
+    // }
+
+    function testDecreaseSize() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
+        vm.startPrank(USER);
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        perpetuEx.decreaseSize(positionId, SIZE);
+        vm.stopPrank();
+        (,, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+        uint256 expectedSize = SIZE_2 - SIZE;
+        uint256 averagePrice = perpetuEx.getAverageOpenPrice(positionId);
+        uint256 expectedTotalValue = expectedSize * averagePrice;
+        assertEq(size, expectedSize);
+        assertEq(totalValue, expectedTotalValue);
+        uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
+        assertEq(longOpenInterestInTokens, expectedSize);
     }
 }
