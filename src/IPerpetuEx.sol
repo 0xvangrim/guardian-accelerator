@@ -15,6 +15,7 @@ interface IPerpetuEx {
     error PerpetuEx__OpenPositionExists();
     error PerpetuEx__InsufficientLiquidity();
     error PerpetuEx__NoUserPositions();
+    error PerpetuEx__NoLiquidationNeeded();
 
     enum PositionAction {
         Open,

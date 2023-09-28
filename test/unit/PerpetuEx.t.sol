@@ -67,7 +67,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     /////////////////// MODIFIERS ////////////////////
     /////////////////////////////////////////////////
 
-    modifier depositCollateral(uint256 amount) {
+    modifier addCollateral(uint256 amount) {
         vm.startPrank(USER);
         perpetuEx.depositCollateral(amount);
         vm.stopPrank();
@@ -76,7 +76,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     modifier addLiquidity(uint256 amount) {
         vm.startPrank(LP);
-        // approve the PerpetuEx contract to spend USDC
         IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
         perpetuEx.deposit(amount, LP);
         vm.stopPrank();
@@ -142,7 +141,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     function testDeposit() public {
         vm.startPrank(LP);
-        // approve the PerpetuEx contract to spend USDC
         IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
         perpetuEx.deposit(LIQUIDITY, LP);
         vm.stopPrank();
@@ -183,7 +181,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     /// Create Position
     /////////////////////
 
-    function testCreateLongPosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
+    function testCreateLongPosition() public addLiquidity(LIQUIDITY) addCollateral(COLLATERAL) {
         vm.startPrank(USER);
         perpetuEx.createPosition(SIZE, true);
         vm.stopPrank();
@@ -202,7 +200,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(totalValue, SIZE * averageOpenPrice);
     }
 
-    function testCreateShortPosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
+    function testCreateShortPosition() public addLiquidity(LIQUIDITY) addCollateral(COLLATERAL) {
         vm.startPrank(USER);
         perpetuEx.createPosition(SIZE, false);
         vm.stopPrank();
@@ -221,12 +219,12 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(totalValue, SIZE * averageOpenPrice);
     }
 
-    /////////////////////
-    // Close Position
-    /////////////////////
+    // /////////////////////
+    // // Close Position
+    // /////////////////////
 
-    // TODO: test with price increasing and decreasing
-    function testClosePosition() public addLiquidity(LIQUIDITY) depositCollateral(COLLATERAL) {
+    // // TODO: test with price increasing and decreasing
+    function testClosePosition() public addLiquidity(LIQUIDITY) addCollateral(COLLATERAL) {
         vm.expectRevert();
         vm.startPrank(USER);
         perpetuEx.closePosition(0);
@@ -273,11 +271,10 @@ contract PerpetuExTest is Test, IPerpetuEx {
     // Needs it own setup
     // function testUserPnlIncreaseIfBtcPriceIncrease() public {
     //     // setup
-    //     MockV3Aggregator mockV3Aggregator = new MockV3Aggregator(8, 2000e8);
+    //     MockV3Aggregator mockV3Aggregator = new MockV3Aggregator(18, 2000e18);
     //     PerpetuEx perpetuExBtcIncrease = new PerpetuEx(address(mockV3Aggregator), IERC20(usdc));
 
     //     // Arrange - LP
-    //     // [FAIL. Reason: ERC20: transfer amount exceeds balance]
     //     vm.startPrank(LP);
     //     IERC20(usdc).approve(address(perpetuExBtcIncrease), type(uint256).max);
     //     perpetuExBtcIncrease.deposit(LIQUIDITY, LP);
@@ -290,7 +287,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     //     perpetuExBtcIncrease.createPosition(SIZE, true);
     //     vm.stopPrank();
 
-    //     int256 btcUsdUpdatedPrice = 3000e8;
+    //     int256 btcUsdUpdatedPrice = 3000e18;
     //     MockV3Aggregator(priceFeed).updateAnswer(btcUsdUpdatedPrice);
     // }
 
@@ -330,6 +327,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
     }
 
     function testDecreaseCollateralInsufficient() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
+        uint256 actualPriceFeed = perpetuEx.getPriceFeed();
+        console.log("actualPriceFeed", actualPriceFeed);
         uint256 leverage = perpetuEx.getLeverage(USER);
         console.log("leverage before", leverage);
 

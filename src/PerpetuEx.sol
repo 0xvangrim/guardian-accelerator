@@ -15,6 +15,7 @@ import {IPerpetuEx} from "./IPerpetuEx.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
+import {console} from "forge-std/Console.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
     struct Position {
@@ -38,7 +39,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     // 20% of the liquidity reserved for safety reasons
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
-    uint256 private constant MAX_LEVERAGE = 20 * 10 ** 4;
+    uint256 private constant MAX_LEVERAGE = 20 * 10 ** 4; // 200000
     uint256 private constant DECIMALS_DELTA = 10 ** 12; // btc decimals - usdc decimals
     uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
     uint16 private constant DEAD_SHARES = 1000;
@@ -125,15 +126,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             isLong: _isLong
         });
         // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
-        // Update the actual open interests
-        _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
-
         uint256 updatedLiquidity = _updatedLiquidity();
         if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
         }
 
-        // _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
+        // Update the actual open interests
+        _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
         positions[currentPositionId] = newPosition;
         userToPositionIds[msg.sender].add(currentPositionId);
     }
@@ -169,9 +168,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
 
         // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
-        _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
-        // _updateOpenInterestsIncrease(position.isLong, _size, currentPrice);
-
         uint256 updatedLiquidity = _updatedLiquidity();
         if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
@@ -180,7 +176,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
         // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
-        // _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
+        _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
         // Update the total value and size of the order
         position.totalValue += addedValue;
         position.size += _size;
@@ -242,12 +238,22 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         Position memory position = positions[userToPositionIds[msg.sender].at(0)];
         uint256 size = position.size;
         uint256 updatedLeverage = _calculateUserLeverage(size, msg.sender);
+        console.log(updatedLeverage, "updatedLeverage");
+
         // check if leverage is above 20x
         if (updatedLeverage > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidAmount();
         }
         i_usdc.safeTransfer(msg.sender, _amount);
     }
+
+    //TODO: implement liquidation
+    // function liquidate(address _user) external {
+    //     Position memory position = positions[userToPositionIds[_user].at(0)];
+    //     uint256 size = position.size;
+    //     uint256 userLeverage = _calculateUserLeverage(size, _user);
+    //     if (userLeverage <= MAX_LEVERAGE) revert PerpetuEx__NoLiquidationNeeded();
+    // }
 
     /// ====================================
     /// ======= Internal Functions =========
