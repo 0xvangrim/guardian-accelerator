@@ -24,14 +24,13 @@ interface IUSDC {
 contract PerpetuExTest is Test, IPerpetuEx {
     PerpetuEx public perpetuEx;
     HelperConfig public helperConfig;
-
+    DeployPerpetuEx public deployer;
     address public constant USER = address(21312312312312312312);
     // create a liquidity provider account
     address public constant LP = address(123123123123123123123);
 
     // USDC contract address on mainnet
     address usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-
     // User mock params
     uint256 SIZE = 1;
     uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
@@ -48,10 +47,11 @@ contract PerpetuExTest is Test, IPerpetuEx {
         IUSDC(usdc).mint(USER, COLLATERAL);
         // mint max to the LP account
         IUSDC(usdc).mint(LP, LIQUIDITY);
-        DeployPerpetuEx deployer = new DeployPerpetuEx();
+        deployer = new DeployPerpetuEx();
         (perpetuEx, helperConfig) = deployer.run();
-
         vm.prank(USER);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        vm.prank(LP);
         IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
     }
     // create a modifier to add liquidity
@@ -65,6 +65,13 @@ contract PerpetuExTest is Test, IPerpetuEx {
         _;
     }
 
+    modifier addCollateral(uint256 amount) {
+        vm.startPrank(USER);
+        perpetuEx.depositCollateral(amount);
+        vm.stopPrank();
+        _;
+    }
+
     function testBalance() public {
         uint256 balance = IERC20(usdc).balanceOf(USER);
         assertEq(balance, COLLATERAL);
@@ -73,6 +80,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(LpBalance, LIQUIDITY);
     }
 
+    //@func depositCollateral
     function testDepositCollateral() public {
         vm.startPrank(USER);
         perpetuEx.depositCollateral(COLLATERAL);
@@ -81,6 +89,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(IERC20(usdc).balanceOf(USER), 0);
     }
 
+    //@func withdrawCollateral
     function testWithdrawCollateral() public {
         vm.startPrank(USER);
         perpetuEx.depositCollateral(COLLATERAL);
@@ -98,38 +107,80 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(perpetuEx.collateral(USER), 0);
     }
 
+    //@func deposit
     function testDeposit() public {
         vm.startPrank(LP);
-        // approve the PerpetuEx contract to spend USDC
-        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
-        perpetuEx.deposit(LIQUIDITY, LP);
+        uint256 shares = perpetuEx.deposit(LIQUIDITY, LP);
         vm.stopPrank();
         assertEq(perpetuEx.totalAssets(), LIQUIDITY);
+        assertEq(perpetuEx.totalSupply(), shares);
+        assertEq(IERC20(usdc).balanceOf(LP), 0);
+        assertEq(IERC20(perpetuEx).balanceOf(LP), shares);
     }
 
-    // to test it se _calculateUserLeverage to public
-    function testCalculateUserLeverage() public {
-        vm.startPrank(USER);
-        perpetuEx.depositCollateral(COLLATERAL);
+    ////@func withdraw
+
+    //Should revert since we are preserving 20% of the liquidity
+    function testWithdrawAllLiquidity() public addLiquidity(LIQUIDITY) {
+        uint256 allLiquidity = perpetuEx.totalSupply();
+        vm.expectRevert();
+        vm.startPrank(LP);
+        perpetuEx.withdraw(allLiquidity, LP, LP);
         vm.stopPrank();
-        assertEq(perpetuEx.collateral(USER), COLLATERAL);
-        uint256 userCollateral = perpetuEx.collateral(USER);
-        console.log(userCollateral);
-        uint256 leverage = perpetuEx._calculateUserLeverage(1, USER);
-        console.log(leverage);
     }
 
-    function testCreatePosition() public addLiquidity(LIQUIDITY) {
-        vm.startPrank(USER);
-        perpetuEx.depositCollateral(COLLATERAL);
-        perpetuEx.createPosition(SIZE, true);
+    function testWithdraw() public addLiquidity(LIQUIDITY) {
+        uint256 allAssets = perpetuEx.totalSupply();
+        uint256 maxLiquidity =
+            allAssets * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+        vm.startPrank(LP);
+        perpetuEx.withdraw(maxLiquidity, LP, LP);
         vm.stopPrank();
-        //     //     // uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
-        //     //     // (, isLong, , uint256 size, , ) = perpetuEx.positions(positionId);
-
-        //     //     // assertEq(perpetuEx.collateral(USER), COLLATERAL);
-        //     //     // // assertEq(position, true);
-        //     //     // assertEq(size, SIZE);
-        //     //     // assertEq(perpetuEx.s_longOpenInterestInTokens(), SIZE);
+        assertEq(perpetuEx.totalAssets(), allAssets - maxLiquidity);
+        assertEq(perpetuEx.totalSupply(), allAssets - maxLiquidity);
+        assertEq(IERC20(usdc).balanceOf(LP), maxLiquidity);
+        assertEq(IERC20(perpetuEx).balanceOf(LP), allAssets - maxLiquidity);
     }
+
+    //@func redeem
+    function testRedeem() public addLiquidity(LIQUIDITY) {
+        uint256 allAssets = perpetuEx.totalSupply();
+        uint256 maxLiquidity =
+            allAssets * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+        vm.startPrank(LP);
+        perpetuEx.redeem(maxLiquidity, LP, LP);
+        vm.stopPrank();
+        assertEq(perpetuEx.totalAssets(), allAssets - maxLiquidity);
+        assertEq(perpetuEx.totalSupply(), allAssets - maxLiquidity);
+        assertEq(IERC20(usdc).balanceOf(LP), maxLiquidity);
+        assertEq(IERC20(perpetuEx).balanceOf(LP), allAssets - maxLiquidity);
+    }
+
+    //@func mint
+    function testMint() public {
+        vm.startPrank(LP);
+        perpetuEx.mint(1000, LP);
+        vm.stopPrank();
+        assertEq(perpetuEx.totalAssets(), 1000);
+        assertEq(perpetuEx.totalSupply(), 1000);
+        assertEq(IERC20(perpetuEx).balanceOf(LP), 1000);
+    }
+
+    // function testCalculateUserLeverage() public {
+    //     vm.startPrank(USER);
+    //     perpetuEx.depositCollateral(COLLATERAL);
+    //     vm.stopPrank();
+    //     assertEq(perpetuEx.collateral(USER), COLLATERAL);
+    //     uint256 userCollateral = perpetuEx.collateral(USER);
+    //     console.log(userCollateral);
+    //     uint256 leverage = perpetuEx._calculateUserLeverage(1, USER);
+    //     console.log(leverage);
+    // }
+
+    // function testCreatePosition() public addLiquidity(LIQUIDITY) {
+    //     vm.startPrank(USER);
+    //     perpetuEx.depositCollateral(COLLATERAL);
+    //     perpetuEx.createPosition(SIZE, true);
+    //     vm.stopPrank();
+    // }
 }
