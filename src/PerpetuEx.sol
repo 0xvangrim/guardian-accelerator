@@ -16,6 +16,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {console} from "forge-std/Console.sol";
+import {console} from "forge-std/Console.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
     struct Position {
@@ -54,8 +55,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         i_priceFeed = AggregatorV3Interface(priceFeed);
         i_usdc = IERC20(_usdc);
 
-        //Avoiding the inflation attack by sending shares to the shadow realm
-        // _mint(address(0), DEAD_SHARES);
+        //Avoiding the inflation attack by sending shares to the contract
+        _mint(address(this), DEAD_SHARES);
     }
 
     mapping(address => uint256) public collateral; //User to collateral mapping
@@ -87,13 +88,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     function deposit(uint256 assets, address receiver) public override returns (uint256 shares) {
-        s_totalLiquidityDeposited += assets;
+        uint256 newTotalLiquidity = s_totalLiquidityDeposited + assets;
         shares = super.deposit(assets, receiver);
+        s_totalLiquidityDeposited = newTotalLiquidity;
     }
 
     function withdraw(uint256 assets, address receiver, address owner) public override returns (uint256 shares) {
-        s_totalLiquidityDeposited -= assets;
+        uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
         shares = super.withdraw(assets, receiver, owner);
+        s_totalLiquidityDeposited = newTotalLiquidity;
     }
 
     function mint(uint256 shares, address receiver) public override returns (uint256 assets) {
@@ -310,6 +313,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
+    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
+        if (totalSupply() == 0) return assets;
+        return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), totalAssets() + 1, rounding);
+    }
+
     // TODO: refactor by implementing this logic inside _updateOpenInterests using string literals
     function _updateOpenInterestsDecrease(bool _isLong, uint256 _sizeDelta, uint256 _price) internal {
         if (_isLong) {
@@ -342,6 +350,22 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         Position memory position = positions[_positionId];
         if (positions[_positionId].positionId == 0) revert PerpetuEx__InvalidPositionId();
         return position.totalValue / position.size;
+    }
+
+    function getTotalPnl() public view returns (int256) {
+        return s_totalPnl;
+    }
+
+    function getTotalLiquidityDeposited() public view returns (uint256) {
+        return s_totalLiquidityDeposited;
+    }
+
+    function getMaxUtilizationPercentage() public pure returns (uint256) {
+        return MAX_UTILIZATION_PERCENTAGE;
+    }
+
+    function getMaxUtilizationPercentageDecimals() public pure returns (uint256) {
+        return MAX_UTILIZATION_PERCENTAGE_DECIMALS;
     }
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
@@ -389,11 +413,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function maxWithdraw(address owner) public view override returns (uint256 maxWithdrawAllowed) {
         uint256 ownerAssets = super._convertToAssets(balanceOf(owner), Math.Rounding.Floor);
-
         uint256 updatedLiquidity = _updatedLiquidity();
-
         if (ownerAssets >= updatedLiquidity) {
-            return maxWithdrawAllowed = ownerAssets - updatedLiquidity;
+            return maxWithdrawAllowed = updatedLiquidity;
         }
 
         if (ownerAssets < updatedLiquidity) {
@@ -407,7 +429,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 updatedLiquidity = _updatedLiquidity();
 
         if (ownerAssets >= updatedLiquidity) {
-            uint256 maxAssetsAllowed = ownerAssets - updatedLiquidity;
+            uint256 maxAssetsAllowed = updatedLiquidity;
             return maxRedeemAllowed = super._convertToShares(maxAssetsAllowed, Math.Rounding.Floor);
         }
 
