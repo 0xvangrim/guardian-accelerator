@@ -8,6 +8,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPerpetuEx} from "../../src/IPerpetuEx.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 interface IUSDC {
     function balanceOf(address account) external view returns (uint256);
@@ -37,6 +38,9 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
+
+    // Dead shares
+    uint256 DEAD_SHARES = 1000;
 
     function setUp() external {
         // spoof .configureMinter() call with the master minter account
@@ -72,12 +76,22 @@ contract PerpetuExTest is Test, IPerpetuEx {
         _;
     }
 
+    //@dev this mimics the share calculation behavior in ERC4626
+    function shareCalculation(uint256 assets) public returns (uint256 withdrawShares) {
+        withdrawShares =
+            Math.mulDiv(assets, perpetuEx.totalSupply() + 10 ** 0, perpetuEx.totalAssets() + 1, Math.Rounding.Floor);
+    }
+
     function testBalance() public {
         uint256 balance = IERC20(usdc).balanceOf(USER);
         assertEq(balance, COLLATERAL);
 
         uint256 LpBalance = IERC20(usdc).balanceOf(LP);
         assertEq(LpBalance, LIQUIDITY);
+    }
+
+    function testSharesOnDeployment() public {
+        assertEq(perpetuEx.totalSupply(), DEAD_SHARES);
     }
 
     //@func depositCollateral
@@ -113,7 +127,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 shares = perpetuEx.deposit(LIQUIDITY, LP);
         vm.stopPrank();
         assertEq(perpetuEx.totalAssets(), LIQUIDITY);
-        assertEq(perpetuEx.totalSupply(), shares);
+        assertEq(perpetuEx.totalSupply(), shares + DEAD_SHARES);
         assertEq(IERC20(usdc).balanceOf(LP), 0);
         assertEq(IERC20(perpetuEx).balanceOf(LP), shares);
     }
@@ -133,27 +147,36 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 allAssets = perpetuEx.totalSupply();
         uint256 maxLiquidity =
             allAssets * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+
+        uint256 maxLiquidityToWithdraw = perpetuEx.getTotalLiquidityDeposited()
+            * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+        uint256 withdrawShares = shareCalculation(maxLiquidityToWithdraw);
+
         vm.startPrank(LP);
-        perpetuEx.withdraw(maxLiquidity, LP, LP);
+        perpetuEx.withdraw(maxLiquidityToWithdraw, LP, LP);
+
         vm.stopPrank();
-        assertEq(perpetuEx.totalAssets(), allAssets - maxLiquidity);
-        assertEq(perpetuEx.totalSupply(), allAssets - maxLiquidity);
-        assertEq(IERC20(usdc).balanceOf(LP), maxLiquidity);
-        assertEq(IERC20(perpetuEx).balanceOf(LP), allAssets - maxLiquidity);
+        assertEq(perpetuEx.totalAssets(), perpetuEx.getTotalLiquidityDeposited());
+        assertEq(perpetuEx.totalSupply(), allAssets - withdrawShares);
+        assertEq(IERC20(usdc).balanceOf(LP), maxLiquidityToWithdraw);
+        assertEq(IERC20(perpetuEx).balanceOf(LP), allAssets - withdrawShares - DEAD_SHARES);
     }
 
     //@func redeem
     function testRedeem() public addLiquidity(LIQUIDITY) {
-        uint256 allAssets = perpetuEx.totalSupply();
-        uint256 maxLiquidity =
-            allAssets * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+        uint256 allAssets = perpetuEx.totalAssets();
+        uint256 allSupply = perpetuEx.totalSupply();
+        uint256 lpShares = IERC20(perpetuEx).balanceOf(LP);
+        uint256 maxRedeemable =
+            lpShares * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+
         vm.startPrank(LP);
-        perpetuEx.redeem(maxLiquidity, LP, LP);
+        perpetuEx.redeem(maxRedeemable, LP, LP);
         vm.stopPrank();
-        assertEq(perpetuEx.totalAssets(), allAssets - maxLiquidity);
-        assertEq(perpetuEx.totalSupply(), allAssets - maxLiquidity);
-        assertEq(IERC20(usdc).balanceOf(LP), maxLiquidity);
-        assertEq(IERC20(perpetuEx).balanceOf(LP), allAssets - maxLiquidity);
+        assertEq(allAssets, perpetuEx.getTotalLiquidityDeposited() + IERC20(usdc).balanceOf(address(LP)));
+        assertEq(perpetuEx.totalSupply(), allSupply - maxRedeemable);
+        assertEq(IERC20(usdc).balanceOf(LP), allAssets - IERC20(usdc).balanceOf(address(perpetuEx)));
+        assertEq(IERC20(perpetuEx).balanceOf(LP), allSupply - maxRedeemable - DEAD_SHARES);
     }
 
     //@func mint
@@ -161,26 +184,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.startPrank(LP);
         perpetuEx.mint(1000, LP);
         vm.stopPrank();
-        assertEq(perpetuEx.totalAssets(), 1000);
-        assertEq(perpetuEx.totalSupply(), 1000);
+        assertEq(perpetuEx.totalSupply(), DEAD_SHARES + 1000);
         assertEq(IERC20(perpetuEx).balanceOf(LP), 1000);
     }
-
-    // function testCalculateUserLeverage() public {
-    //     vm.startPrank(USER);
-    //     perpetuEx.depositCollateral(COLLATERAL);
-    //     vm.stopPrank();
-    //     assertEq(perpetuEx.collateral(USER), COLLATERAL);
-    //     uint256 userCollateral = perpetuEx.collateral(USER);
-    //     console.log(userCollateral);
-    //     uint256 leverage = perpetuEx._calculateUserLeverage(1, USER);
-    //     console.log(leverage);
-    // }
-
-    // function testCreatePosition() public addLiquidity(LIQUIDITY) {
-    //     vm.startPrank(USER);
-    //     perpetuEx.depositCollateral(COLLATERAL);
-    //     perpetuEx.createPosition(SIZE, true);
-    //     vm.stopPrank();
-    // }
 }

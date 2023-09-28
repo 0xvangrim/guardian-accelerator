@@ -55,9 +55,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         i_priceFeed = AggregatorV3Interface(priceFeed);
         i_usdc = IERC20(_usdc);
 
-        //Avoiding the inflation attack by sending shares to the shadow realm
+        //Avoiding the inflation attack by sending shares to the contract
         _mint(address(this), DEAD_SHARES);
-        _burn(address(this), DEAD_SHARES);
     }
 
     mapping(address => uint256) public collateral; //User to collateral mapping
