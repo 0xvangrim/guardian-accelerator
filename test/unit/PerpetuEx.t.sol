@@ -196,6 +196,32 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(IERC20(perpetuEx).balanceOf(LP), allAssets - withdrawShares - DEAD_SHARES);
     }
 
+    //@func redeem
+    function testRedeem() public addLiquidity(LIQUIDITY) {
+        uint256 allAssets = perpetuEx.totalAssets();
+        uint256 allSupply = perpetuEx.totalSupply();
+        uint256 lpShares = IERC20(perpetuEx).balanceOf(LP);
+        uint256 maxRedeemable =
+            lpShares * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
+
+        vm.startPrank(LP);
+        perpetuEx.redeem(maxRedeemable, LP, LP);
+        vm.stopPrank();
+        assertEq(allAssets, perpetuEx.getTotalLiquidityDeposited() + IERC20(usdc).balanceOf(address(LP)));
+        assertEq(perpetuEx.totalSupply(), allSupply - maxRedeemable);
+        assertEq(IERC20(usdc).balanceOf(LP), allAssets - IERC20(usdc).balanceOf(address(perpetuEx)));
+        assertEq(IERC20(perpetuEx).balanceOf(LP), allSupply - maxRedeemable - DEAD_SHARES);
+    }
+
+    //@func mint
+    function testMint() public {
+        vm.startPrank(LP);
+        perpetuEx.mint(1000, LP);
+        vm.stopPrank();
+        assertEq(perpetuEx.totalSupply(), DEAD_SHARES + 1000);
+        assertEq(IERC20(perpetuEx).balanceOf(LP), 1000);
+    }
+
     ///////////////////////////////////////////////////
     /////////////// INTERNAL FUNCTIONS ////////////////
     ///////////////////////////////////////////////////
@@ -266,31 +292,5 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 averageOpenPrice = perpetuEx.getAverageOpenPrice(positionId);
         assertEq(shortOpenInterest, SIZE * averageOpenPrice);
         assertEq(totalValue, SIZE * averageOpenPrice);
-    }
-
-    //@func redeem
-    function testRedeem() public addLiquidity(LIQUIDITY) {
-        uint256 allAssets = perpetuEx.totalAssets();
-        uint256 allSupply = perpetuEx.totalSupply();
-        uint256 lpShares = IERC20(perpetuEx).balanceOf(LP);
-        uint256 maxRedeemable =
-            lpShares * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
-
-        vm.startPrank(LP);
-        perpetuEx.redeem(maxRedeemable, LP, LP);
-        vm.stopPrank();
-        assertEq(allAssets, perpetuEx.getTotalLiquidityDeposited() + IERC20(usdc).balanceOf(address(LP)));
-        assertEq(perpetuEx.totalSupply(), allSupply - maxRedeemable);
-        assertEq(IERC20(usdc).balanceOf(LP), allAssets - IERC20(usdc).balanceOf(address(perpetuEx)));
-        assertEq(IERC20(perpetuEx).balanceOf(LP), allSupply - maxRedeemable - DEAD_SHARES);
-    }
-
-    //@func mint
-    function testMint() public {
-        vm.startPrank(LP);
-        perpetuEx.mint(1000, LP);
-        vm.stopPrank();
-        assertEq(perpetuEx.totalSupply(), DEAD_SHARES + 1000);
-        assertEq(IERC20(perpetuEx).balanceOf(LP), 1000);
     }
 }
