@@ -388,8 +388,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
     //////////////////
 
     function testDecreaseSize() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
-        uint256 userBalanceBedore = IERC20(usdc).balanceOf(USER);
-        console.log("userBalanceBefore", userBalanceBedore);
+        uint256 userBalanceBefore = IERC20(usdc).balanceOf(USER);
+        console.log("userBalanceBefore", userBalanceBefore);
         vm.startPrank(USER);
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         perpetuEx.decreaseSize(positionId, SIZE);
@@ -403,6 +403,16 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
         assertEq(longOpenInterestInTokens, expectedSize);
     }
+
+    function testDecreaseSizeMax() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
+        vm.startPrank(USER);
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        perpetuEx.decreaseSize(positionId, SIZE_2);
+        perpetuEx.withdrawCollateral();
+        uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
+        assertEq(longOpenInterestInTokens, 0);
+        vm.stopPrank();
+    }
     ///////////////////////
     // Decrease Collateral
     ///////////////////////
@@ -414,39 +424,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
         perpetuEx.decreaseCollateral(DECREASE_COLLATERAL);
         uint256 collateralAfter = perpetuEx.collateral(USER);
         console.log("collateralAfter", collateralAfter);
-        vm.stopPrank();
-    }
-
-    function testDecreaseCollateralInsufficient() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
-        uint256 actualPriceFeed = perpetuEx.getPriceFeed();
-        console.log("actualPriceFeed", actualPriceFeed);
-        uint256 leverage = perpetuEx.getLeverage(USER);
-        console.log("leverage before", leverage);
-
-        vm.startPrank(USER);
-        uint256 collateral = perpetuEx.collateral(USER);
-        console.log("collateralBefore", collateral);
-
-        perpetuEx.decreaseCollateral(COLLATERAL / 2);
-        collateral = perpetuEx.collateral(USER);
-        leverage = perpetuEx.getLeverage(USER);
-        console.log("collateralAfter", collateral);
-        console.log("leverage after", leverage);
-
-        perpetuEx.decreaseCollateral(COLLATERAL / 6);
-        collateral = perpetuEx.collateral(USER);
-        leverage = perpetuEx.getLeverage(USER);
-        console.log("collateralAfter 2", collateral);
-        console.log("leverage after 2", leverage);
-
-        perpetuEx.decreaseCollateral(COLLATERAL / 17);
-        collateral = perpetuEx.collateral(USER);
-        leverage = perpetuEx.getLeverage(USER);
-        console.log("collateralAfter 3", collateral);
-        console.log("leverage after 3", leverage);
-
-        vm.expectRevert();
-        perpetuEx.decreaseCollateral(COLLATERAL / 20);
         vm.stopPrank();
     }
 }

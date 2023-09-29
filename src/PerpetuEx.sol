@@ -45,10 +45,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
     uint16 private constant DEAD_SHARES = 1000;
 
-    uint256 private constant BORROWING_FEE_PER_WEEK = 1; // 0.1% fee on borrowing per week
-    uint256 private constant BORROWING_FEE_PER_UNIT = 1; // 0.1% fee on borrowing per unit
-    uint256 private constant FEE_DECIMALS = 1000;
-
     uint256 private s_nonce;
     uint256 public s_totalLiquidityDeposited;
     int256 public s_totalPnl;
@@ -121,7 +117,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (userToPositionIds[msg.sender].length() > 0) {
             revert PerpetuEx__OpenPositionExists();
         }
-        //TODO: compute positionId keccak256(abi.encode(owner + nonce)) to avoid position id collision
         ++s_nonce;
         uint256 currentPrice = getPriceFeed();
         Position memory newPosition = Position({
@@ -132,39 +127,37 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             isLong: _isLong,
             openTimestamp: block.timestamp
         });
-        // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
         uint256 updatedLiquidity = _updatedLiquidity();
         if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
         }
-
-        // Update the actual open interests
         _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
         positions[s_nonce] = newPosition;
         userToPositionIds[msg.sender].add(s_nonce);
     }
 
-    function closePosition(uint256 _positionId) external {
+    function closePosition(uint256 _positionId) public {
         Position storage position = positions[_positionId];
         if (_positionId == 0) revert PerpetuEx__InvalidPositionId();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
-        // calculate pnl for user and add to total pnl
+
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
-        // update trader's collateral, profits or losses are now realized, trader can withdraw if he wants to
         if (pnl > 0) {
             uint256 profits = uint256(pnl);
+            _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
+            s_totalPnl -= int256(profits);
+            userToPositionIds[msg.sender].remove(_positionId);
+            delete positions[_positionId];
             i_usdc.safeTransfer(msg.sender, profits);
         }
         if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(pnl);
             collateral[msg.sender] -= unsignedPnl;
+            _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
+            s_totalPnl += _calculateUserPnl(_positionId, position.isLong);
+            userToPositionIds[msg.sender].remove(_positionId);
+            delete positions[_positionId];
         }
-        // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
-        _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
-        s_totalPnl += _calculateUserPnl(_positionId, position.isLong);
-        userToPositionIds[msg.sender].remove(_positionId);
-
-        delete positions[_positionId];
     }
 
     function increaseSize(uint256 _positionId, uint256 _size) external {
@@ -190,40 +183,40 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         position.size += _size;
     }
 
-    //TODO: pay fee then decrease?
-    function decreaseSize(uint256 _positionId, uint256 _sizeDelta) external {
+    function decreaseSize(uint256 _positionId, uint256 _size) external {
         Position storage position = positions[_positionId];
-        uint256 currentPrice = getPriceFeed();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
-        if (_sizeDelta == 0 || _sizeDelta >= position.size) {
+        if (_size == 0) {
             revert PerpetuEx__InvalidSize();
         }
-        // Update open interests
-        _updateOpenInterestsDecrease(position.isLong, _sizeDelta, currentPrice);
-
-        // compute pnl for user and add to total pnl
-        int256 pnl = _calculateUserPnl(_positionId, position.isLong);
-        //update total pnl
-        s_totalPnl += pnl;
-        _updatedLiquidity();
-
+        uint256 currentPrice = getPriceFeed();
+        uint256 updatedSize = position.size - _size;
+        int256 realizedPnl;
         uint256 averagePrice = getAverageOpenPrice(_positionId);
-        if (pnl > 0) {
-            // send profits to user
-            uint256 profits = uint256(pnl);
-            position.size -= _sizeDelta;
-            //TODO: make sure I should use averagePrice or currentPrice
-            position.totalValue -= _sizeDelta * averagePrice;
+
+        if (updatedSize == 0) {
+            realizedPnl = _calculateUserPnl(_positionId, position.isLong);
+            s_totalPnl += realizedPnl;
+            _updatedLiquidity();
+            closePosition(_positionId);
+            return;
+        }
+        _updateOpenInterestsDecrease(position.isLong, _size, currentPrice);
+        int256 pnl = _calculateUserPnl(_positionId, position.isLong);
+        realizedPnl = (pnl * int256(_size)) / int256(position.size);
+        s_totalPnl += realizedPnl;
+        _updatedLiquidity();
+        if (realizedPnl > 0) {
+            uint256 profits = uint256(realizedPnl);
+            position.size -= _size;
+            // averagePrice or currentPrice?
+            position.totalValue -= _size * averagePrice;
             i_usdc.safeTransfer(msg.sender, profits);
         } else if (pnl <= 0) {
-            uint256 unsignedPnl = SignedMath.abs(pnl);
-            position.size -= _sizeDelta;
-            position.totalValue -= _sizeDelta * averagePrice;
+            uint256 unsignedPnl = SignedMath.abs(realizedPnl);
+            position.size -= _size;
+            position.totalValue -= _size * averagePrice;
             collateral[msg.sender] -= unsignedPnl;
-            // check new leverage even if it should be fine
-            if (_calculateUserLeverage(position.size - _sizeDelta, msg.sender) > MAX_LEVERAGE) {
-                revert PerpetuEx__InvalidSize();
-            }
         }
     }
 
@@ -319,11 +312,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
-    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
-        if (totalSupply() == 0) return assets;
-        return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), totalAssets() + 1, rounding);
-    }
-
     // TODO: refactor by implementing this logic inside _updateOpenInterests using string literals
     function _updateOpenInterestsDecrease(bool _isLong, uint256 _sizeDelta, uint256 _price) internal {
         if (_isLong) {
@@ -334,6 +322,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         } else {
             revert PerpetuEx__NoPositionChosen();
         }
+    }
+
+    function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
+        if (totalSupply() == 0) return assets;
+        return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), totalAssets() + 1, rounding);
     }
 
     // =========================
@@ -374,29 +367,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         return MAX_UTILIZATION_PERCENTAGE_DECIMALS;
     }
 
-    function _calculateBorrowingFee(uint256 _positionId) internal view returns (uint256) {
-        Position memory position = positions[_positionId];
-        uint256 size = position.size;
-        uint256 openTimestamp = position.openTimestamp;
-        uint256 currentTimestamp = block.timestamp;
-        uint256 timeDelta = currentTimestamp - openTimestamp;
-        // No fees if position is open for less than a week
-        if (timeDelta < 604800) {
-            return 0;
-        } else {
-            timeDelta = timeDelta / 604800;
-        }
-        uint256 borrowingFeeSize = (size * BORROWING_FEE_PER_UNIT) / FEE_DECIMALS;
-        uint256 borrowinFeeUnit = (BORROWING_FEE_PER_UNIT * timeDelta) / FEE_DECIMALS;
-        uint256 borrowingFee = borrowingFeeSize + borrowinFeeUnit;
-        return borrowingFee;
-    }
-
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
         uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION;
 
-        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA;
+        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA * DECIMALS_PRECISION;
         if (userToPositionIds[_user].length() == 0) {
             userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);
             return userLeverage;
@@ -428,12 +403,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 currentPrice = getPriceFeed();
         uint256 averagePrice = getAverageOpenPrice(_positionId);
         Position storage position = positions[_positionId];
-        uint256 borrowingFee = _calculateBorrowingFee(_positionId);
 
         if (_isLong) {
-            pnl = (int256(currentPrice - averagePrice) * int256(position.size)) - int256(borrowingFee);
+            pnl = (int256(currentPrice - averagePrice) * int256(position.size));
         } else if (!_isLong) {
-            pnl = (int256(averagePrice - currentPrice) * int256(position.size)) - int256(borrowingFee);
+            pnl = (int256(averagePrice - currentPrice) * int256(position.size));
         } else {
             revert PerpetuEx__NoPositionChosen();
         }
@@ -482,11 +456,5 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         Position memory position = positions[userToPositionIds[_user].at(0)];
         uint256 size = position.size;
         leverage = _calculateUserLeverage(size, _user);
-    }
-
-    function getBorrowingFee(address _user) public view returns (uint256 borrowingFee) {
-        Position memory position = positions[userToPositionIds[_user].at(0)];
-        uint256 positionId = userToPositionIds[_user].at(0);
-        borrowingFee = _calculateBorrowingFee(positionId);
     }
 }
