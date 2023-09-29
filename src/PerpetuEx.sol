@@ -20,7 +20,6 @@ import {console} from "forge-std/Console.sol";
 
 contract PerpetuEx is ERC4626, IPerpetuEx {
     struct Position {
-        uint256 positionId;
         bool isLong;
         uint256 totalValue; // Accumulated USD value committed to the position
         uint256 size;
@@ -118,10 +117,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             revert PerpetuEx__OpenPositionExists();
         }
         //TODO: compute positionId keccak256(abi.encode(owner + nonce)) to avoid position id collision
-        uint256 currentPositionId = ++s_nonce;
+        ++s_nonce;
         uint256 currentPrice = getPriceFeed();
         Position memory newPosition = Position({
-            positionId: currentPositionId,
             size: _size,
             collateral: collateral[msg.sender],
             totalValue: _size * currentPrice,
@@ -136,13 +134,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
         // Update the actual open interests
         _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
-        positions[currentPositionId] = newPosition;
-        userToPositionIds[msg.sender].add(currentPositionId);
+        positions[s_nonce] = newPosition;
+        userToPositionIds[msg.sender].add(s_nonce);
     }
 
     function closePosition(uint256 _positionId) external {
         Position storage position = positions[_positionId];
-        if (position.positionId == 0) revert PerpetuEx__InvalidPositionId();
+        if (_positionId == 0) revert PerpetuEx__InvalidPositionId();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
         // calculate pnl for user and add to total pnl
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
@@ -348,7 +346,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function getAverageOpenPrice(uint256 _positionId) public view returns (uint256) {
         Position memory position = positions[_positionId];
-        if (positions[_positionId].positionId == 0) revert PerpetuEx__InvalidPositionId();
+        if (_positionId == 0) revert PerpetuEx__InvalidPositionId();
         return position.totalValue / position.size;
     }
 
@@ -380,7 +378,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         //TODO: Add support for more orders from the same user. For now we block it.
         uint256 positionId = userToPositionIds[_user].at(0);
         Position memory position = positions[positionId];
-        int256 userPnl = _calculateUserPnl(position.positionId, position.isLong);
+        int256 userPnl = _calculateUserPnl(positionId, position.isLong);
 
         if (userPnl == 0) {
             userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);

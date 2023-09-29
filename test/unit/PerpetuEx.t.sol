@@ -28,7 +28,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
     HelperConfig public helperConfig;
     DeployPerpetuEx public deployer;
     address public priceFeed;
-
     address public constant USER = address(21312312312312312312);
     // create a liquidity provider account
     address public constant LP = address(123123123123123123123);
@@ -235,7 +234,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.stopPrank();
 
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
-        (, bool isLong, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+        (bool isLong, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
 
         assert(isLong);
         assertEq(perpetuEx.collateral(USER), COLLATERAL);
@@ -254,7 +253,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         vm.stopPrank();
 
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
-        (, bool isLong, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+        (bool isLong, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
 
         assert(!isLong);
         assertEq(perpetuEx.collateral(USER), COLLATERAL);
@@ -300,7 +299,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         perpetuEx.increaseSize(positionId, SIZE);
         vm.stopPrank();
-        (,, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+        (, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
         // 52490,303972840000000000 * 10 **18
         // console.log(totalValue);
         uint256 expectedSize = SIZE + SIZE;
@@ -350,7 +349,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         perpetuEx.decreaseSize(positionId, SIZE);
         vm.stopPrank();
-        (,, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
+        (, uint256 totalValue, uint256 size,,) = perpetuEx.positions(positionId);
         uint256 expectedSize = SIZE_2 - SIZE;
         uint256 averagePrice = perpetuEx.getAverageOpenPrice(positionId);
         uint256 expectedTotalValue = expectedSize * averagePrice;
