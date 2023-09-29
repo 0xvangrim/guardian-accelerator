@@ -154,9 +154,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
         if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(pnl);
-            collateral[msg.sender] -= unsignedPnl;
             _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
-            s_totalPnl += _calculateUserPnl(_positionId, position.isLong);
+            s_totalPnl += int256(unsignedPnl);
             userToPositionIds[msg.sender].remove(_positionId);
             delete positions[_positionId];
             uint256 lossRealized = collateralAmount - unsignedPnl;
@@ -171,18 +170,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
-
-        // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
         uint256 updatedLiquidity = _updatedLiquidity();
         if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
         }
-
-        // Calculate the total USD value of the new position being added
         uint256 addedValue = _size * currentPrice;
-        // Update s_longOpenInterestInTokens if long or s_shortOpenInterest if short
         _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
-        // Update the total value and size of the order
         position.totalValue += addedValue;
         position.size += _size;
     }
@@ -211,11 +204,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         s_totalPnl += realizedPnl;
         uint256 collateralAmount = (position.collateral * _size) / position.size;
         _updatedLiquidity();
-        //TODO: send also the corresponding collateral
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
             position.size -= _size;
-            // averagePrice or currentPrice?
             position.totalValue -= _size * averagePrice;
             uint256 profitRealized = profits + collateralAmount;
             collateral[msg.sender] -= collateralAmount;
@@ -224,10 +215,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             uint256 unsignedPnl = SignedMath.abs(realizedPnl);
             position.size -= _size;
             position.totalValue -= _size * averagePrice;
-            uint256 lossRealised = collateralAmount - unsignedPnl;
-            collateral[msg.sender] -= lossRealised;
-            //TODO: send also the corresponding collateral
-            i_usdc.safeTransfer(msg.sender, lossRealised);
+            uint256 lossRealized = collateralAmount - unsignedPnl;
+            collateral[msg.sender] -= lossRealized;
+            i_usdc.safeTransfer(msg.sender, lossRealized);
         }
     }
 
@@ -245,15 +235,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
         if (_amount == 0) revert PerpetuEx__InvalidAmount();
 
-        // calculate leverage after collateral decrease
         uint256 userCollateral = collateral[msg.sender];
         collateral[msg.sender] = userCollateral - _amount;
         Position memory position = positions[userToPositionIds[msg.sender].at(0)];
         uint256 size = position.size;
         uint256 updatedLeverage = _calculateUserLeverage(size, msg.sender);
-        console.log(updatedLeverage, "updatedLeverage");
-
-        // check if leverage is above 20x
         if (updatedLeverage > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidAmount();
         }
@@ -323,7 +309,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
-    // TODO: refactor by implementing this logic inside _updateOpenInterests using string literals
     function _updateOpenInterestsDecrease(bool _isLong, uint256 _sizeDelta, uint256 _price) internal {
         if (_isLong) {
             s_longOpenInterestInTokens -= _sizeDelta;
@@ -407,9 +392,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
-    /**
-     * @dev Calculate the pnl of a user. Fees are included in the pnl calculation
-     */
     function _calculateUserPnl(uint256 _positionId, bool _isLong) internal view returns (int256 pnl) {
         uint256 currentPrice = getPriceFeed();
         uint256 averagePrice = getAverageOpenPrice(_positionId);
