@@ -25,6 +25,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 size;
         uint256 collateral;
         address owner;
+        uint256 openTimestamp;
     }
 
     using Oracle for uint256;
@@ -43,6 +44,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     uint256 private constant DECIMALS_DELTA = 10 ** 12; // btc decimals - usdc decimals
     uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
     uint16 private constant DEAD_SHARES = 1000;
+
+    uint256 private constant BORROWING_FEE_PER_WEEK = 1; // 0.1% fee on borrowing per week
+    uint256 private constant BORROWING_FEE_PER_UNIT = 1; // 0.1% fee on borrowing per unit
+    uint256 private constant FEE_DECIMALS = 1000;
 
     uint256 private s_nonce;
     uint256 public s_totalLiquidityDeposited;
@@ -124,7 +129,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             collateral: collateral[msg.sender],
             totalValue: _size * currentPrice,
             owner: msg.sender,
-            isLong: _isLong
+            isLong: _isLong,
+            openTimestamp: block.timestamp
         });
         // check that s_shortOpenInterest + s_longOpenInterestInTokens < 80% of total assets
         uint256 updatedLiquidity = _updatedLiquidity();
@@ -145,10 +151,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         // calculate pnl for user and add to total pnl
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
         // update trader's collateral, profits or losses are now realized, trader can withdraw if he wants to
-        if (pnl >= 0) {
-            collateral[msg.sender] += uint256(pnl);
+        if (pnl > 0) {
+            uint256 profits = uint256(pnl);
+            i_usdc.safeTransfer(msg.sender, profits);
         }
-        if (pnl < 0) {
+        if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(pnl);
             collateral[msg.sender] -= unsignedPnl;
         }
@@ -183,6 +190,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         position.size += _size;
     }
 
+    //TODO: pay fee then decrease?
     function decreaseSize(uint256 _positionId, uint256 _sizeDelta) external {
         Position storage position = positions[_positionId];
         uint256 currentPrice = getPriceFeed();
@@ -200,14 +208,14 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         _updatedLiquidity();
 
         uint256 averagePrice = getAverageOpenPrice(_positionId);
-        if (pnl >= 0) {
+        if (pnl > 0) {
             // send profits to user
             uint256 profits = uint256(pnl);
             position.size -= _sizeDelta;
             //TODO: make sure I should use averagePrice or currentPrice
             position.totalValue -= _sizeDelta * averagePrice;
             i_usdc.safeTransfer(msg.sender, profits);
-        } else if (pnl < 0) {
+        } else if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(pnl);
             position.size -= _sizeDelta;
             position.totalValue -= _sizeDelta * averagePrice;
@@ -366,6 +374,24 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         return MAX_UTILIZATION_PERCENTAGE_DECIMALS;
     }
 
+    function _calculateBorrowingFee(uint256 _positionId) internal view returns (uint256) {
+        Position memory position = positions[_positionId];
+        uint256 size = position.size;
+        uint256 openTimestamp = position.openTimestamp;
+        uint256 currentTimestamp = block.timestamp;
+        uint256 timeDelta = currentTimestamp - openTimestamp;
+        // No fees if position is open for less than a week
+        if (timeDelta < 604800) {
+            return 0;
+        } else {
+            timeDelta = timeDelta / 604800;
+        }
+        uint256 borrowingFeeSize = (size * BORROWING_FEE_PER_UNIT) / FEE_DECIMALS;
+        uint256 borrowinFeeUnit = (BORROWING_FEE_PER_UNIT * timeDelta) / FEE_DECIMALS;
+        uint256 borrowingFee = borrowingFeeSize + borrowinFeeUnit;
+        return borrowingFee;
+    }
+
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
         uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION;
@@ -395,15 +421,19 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
+    /**
+     * @dev Calculate the pnl of a user. Fees are included in the pnl calculation
+     */
     function _calculateUserPnl(uint256 _positionId, bool _isLong) internal view returns (int256 pnl) {
         uint256 currentPrice = getPriceFeed();
         uint256 averagePrice = getAverageOpenPrice(_positionId);
         Position storage position = positions[_positionId];
+        uint256 borrowingFee = _calculateBorrowingFee(_positionId);
 
         if (_isLong) {
-            pnl = int256(currentPrice - averagePrice) * int256(position.size);
+            pnl = (int256(currentPrice - averagePrice) * int256(position.size)) - int256(borrowingFee);
         } else if (!_isLong) {
-            pnl = int256(averagePrice - currentPrice) * int256(position.size);
+            pnl = (int256(averagePrice - currentPrice) * int256(position.size)) - int256(borrowingFee);
         } else {
             revert PerpetuEx__NoPositionChosen();
         }
@@ -452,5 +482,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         Position memory position = positions[userToPositionIds[_user].at(0)];
         uint256 size = position.size;
         leverage = _calculateUserLeverage(size, _user);
+    }
+
+    function getBorrowingFee(address _user) public view returns (uint256 borrowingFee) {
+        Position memory position = positions[userToPositionIds[_user].at(0)];
+        uint256 positionId = userToPositionIds[_user].at(0);
+        borrowingFee = _calculateBorrowingFee(positionId);
     }
 }
