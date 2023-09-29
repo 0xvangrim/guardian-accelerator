@@ -8,6 +8,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPerpetuEx} from "../../src/IPerpetuEx.sol";
+import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 interface IUSDC {
@@ -27,7 +28,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
     HelperConfig public helperConfig;
     DeployPerpetuEx public deployer;
     address public priceFeed;
-
     address public constant USER = address(21312312312312312312);
     // create a liquidity provider account
     address public constant LP = address(123123123123123123123);
@@ -36,10 +36,15 @@ contract PerpetuExTest is Test, IPerpetuEx {
     address usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     // User mock params
     uint256 SIZE = 1;
+    uint256 SIZE_2 = 2;
     uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
+    uint256 DECREASE_COLLATERAL = 1500e6;
 
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
+
+    uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
+    uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
 
     // Dead shares
     uint256 DEAD_SHARES = 1000;
