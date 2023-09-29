@@ -402,13 +402,14 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(totalValue, expectedTotalValue);
         uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
         assertEq(longOpenInterestInTokens, expectedSize);
+        uint256 balanceAfter = IERC20(usdc).balanceOf(USER);
+        assertEq(balanceAfter, COLLATERAL / 2);
     }
 
     function testDecreaseSizeMax() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
         vm.startPrank(USER);
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         perpetuEx.decreaseSize(positionId, SIZE_2);
-        perpetuEx.withdrawCollateral();
         uint256 longOpenInterestInTokens = perpetuEx.s_longOpenInterestInTokens();
         assertEq(longOpenInterestInTokens, 0);
         vm.stopPrank();

@@ -142,13 +142,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
 
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
+        uint256 collateralAmount = position.collateral;
         if (pnl > 0) {
             uint256 profits = uint256(pnl);
             _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
             s_totalPnl -= int256(profits);
             userToPositionIds[msg.sender].remove(_positionId);
             delete positions[_positionId];
-            i_usdc.safeTransfer(msg.sender, profits);
+            uint256 profitRealized = profits + collateralAmount;
+            i_usdc.safeTransfer(msg.sender, profitRealized);
         }
         if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(pnl);
@@ -157,6 +159,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             s_totalPnl += _calculateUserPnl(_positionId, position.isLong);
             userToPositionIds[msg.sender].remove(_positionId);
             delete positions[_positionId];
+            uint256 lossRealized = collateralAmount - unsignedPnl;
+            i_usdc.safeTransfer(msg.sender, lossRealized);
         }
     }
 
@@ -205,18 +209,25 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
         realizedPnl = (pnl * int256(_size)) / int256(position.size);
         s_totalPnl += realizedPnl;
+        uint256 collateralAmount = (position.collateral * _size) / position.size;
         _updatedLiquidity();
+        //TODO: send also the corresponding collateral
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
             position.size -= _size;
             // averagePrice or currentPrice?
             position.totalValue -= _size * averagePrice;
-            i_usdc.safeTransfer(msg.sender, profits);
+            uint256 profitRealized = profits + collateralAmount;
+            collateral[msg.sender] -= collateralAmount;
+            i_usdc.safeTransfer(msg.sender, profitRealized);
         } else if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(realizedPnl);
             position.size -= _size;
             position.totalValue -= _size * averagePrice;
-            collateral[msg.sender] -= unsignedPnl;
+            uint256 lossRealised = collateralAmount - unsignedPnl;
+            collateral[msg.sender] -= lossRealised;
+            //TODO: send also the corresponding collateral
+            i_usdc.safeTransfer(msg.sender, lossRealised);
         }
     }
 
