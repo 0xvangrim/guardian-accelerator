@@ -172,8 +172,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 currentPrice = getPriceFeed();
         uint256 borrowingFees = _borrowingFees(_positionId);
         s_totalPnl -= int256(borrowingFees);
-        collateral[msg.sender] -= borrowingFees;
-        position.collateral -= borrowingFees;
+        positions[_positionId] = _updateCollateral(position, borrowingFees);
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
@@ -182,13 +181,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
             revert PerpetuEx__InsufficientLiquidity();
         }
         uint256 addedValue = _size * currentPrice;
+        position = positions[_positionId];
         _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
         position.totalValue += addedValue;
         position.size += _size;
         positions[_positionId] = position;
     }
 
-    // TODO: borrowing fees
     function decreaseSize(uint256 _positionId, uint256 _size) external {
         Position storage position = positions[_positionId];
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
@@ -216,16 +215,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
             uint256 profitRealized = profits + collateralAmount;
-            collateral[msg.sender] -= collateralAmount;
-            position.collateral -= collateralAmount;
-            positions[_positionId] = position;
+            positions[_positionId] = _updateCollateral(position, profitRealized);
             i_usdc.safeTransfer(msg.sender, profitRealized);
         } else if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(realizedPnl);
             uint256 lossRealized = collateralAmount - unsignedPnl;
-            position.collateral -= lossRealized;
-            collateral[msg.sender] -= lossRealized;
-            positions[_positionId] = position;
+            positions[_positionId] = _updateCollateral(position, lossRealized);
             i_usdc.safeTransfer(msg.sender, lossRealized);
         }
     }
@@ -337,6 +332,17 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         } else {
             revert PerpetuEx__NoPositionChosen();
         }
+    }
+
+    function _updateCollateral(Position storage position, uint256 _amount)
+        internal
+        returns (Position memory updatedPosition)
+    {
+        address owner = position.owner;
+        position.collateral -= _amount;
+        collateral[owner] -= _amount;
+        updatedPosition = position;
+        return updatedPosition;
     }
 
     function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {

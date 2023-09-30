@@ -443,6 +443,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 expectedBorrowingFees = positionAmount / borrowingRate;
         console.log("expectedBorrowingFees", expectedBorrowingFees); // 2695.201 * 1e18
 
-        assertEq(borrowingFees / 1e16, expectedBorrowingFees / 1e16);
+        assertEq(borrowingFees / 1e18, expectedBorrowingFees / 1e18);
     }
 }
