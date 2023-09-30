@@ -46,6 +46,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
+    uint256 private constant SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
 
     // Dead shares
     uint256 DEAD_SHARES = 1000;
@@ -315,7 +316,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     // // Close Position
     // /////////////////////
 
-    // // TODO: test with price increasing and decreasing
+    // TODO: test with price increasing and decreasing
     function testClosePosition() public addLiquidity(LIQUIDITY) addCollateral(COLLATERAL) {
         vm.expectRevert();
         vm.startPrank(USER);
@@ -426,5 +427,22 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 collateralAfter = perpetuEx.collateral(USER);
         console.log("collateralAfter", collateralAfter);
         vm.stopPrank();
+    }
+
+    //forge test --match-test "testBorrowingFeesForAYear" --fork-url ${MAINNET_RPC_URL}  -vvvv
+    function testBorrowingFeesForAYear() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
+        // fees after 1 year
+        uint256 currentTimestamp = block.timestamp;
+        vm.warp(currentTimestamp + SECONDS_PER_YEAR);
+        uint256 borrowingFees = perpetuEx.getBorrowingFees(USER); // 2695.200999680025737280 * 1e18 in USDC
+        console.log("borrowingFees", borrowingFees);
+        // expected values
+        uint256 borrowingRate = perpetuEx.getBorrowingRate();
+        uint256 currentPrice = perpetuEx.getPriceFeed(); // BTC in USD
+        uint256 positionAmount = SIZE * currentPrice;
+        uint256 expectedBorrowingFees = positionAmount / borrowingRate;
+        console.log("expectedBorrowingFees", expectedBorrowingFees); // 2695.201 * 1e18
+
+        assertEq(borrowingFees / 1e16, expectedBorrowingFees / 1e16);
     }
 }

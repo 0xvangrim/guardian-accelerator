@@ -40,6 +40,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     // 20% of the liquidity reserved for safety reasons
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
+    uint256 private constant BORROWING_RATE = 10; //10% per year
+    uint256 private constant SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
+    uint256 private constant USDC_DECIMALS_ORACLE_MULTIPLIER = 1e18;
     uint256 private constant MAX_LEVERAGE = 20 * 10 ** 4; // 200000
     uint256 private constant DECIMALS_DELTA = 10 ** 12; // btc decimals - usdc decimals
     uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
@@ -140,8 +143,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         Position storage position = positions[_positionId];
         if (_positionId == 0) revert PerpetuEx__InvalidPositionId();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
-
-        int256 pnl = _calculateUserPnl(_positionId, position.isLong);
+        uint256 borrowingFees = _borrowingFees(_positionId);
+        int256 pnl = _calculateUserPnl(_positionId, position.isLong) - int256(borrowingFees);
         uint256 collateralAmount = position.collateral;
         if (pnl > 0) {
             uint256 profits = uint256(pnl);
@@ -165,8 +168,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
 
     function increaseSize(uint256 _positionId, uint256 _size) external {
         Position storage position = positions[_positionId];
-        uint256 currentPrice = getPriceFeed();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
+        uint256 currentPrice = getPriceFeed();
+        uint256 borrowingFees = _borrowingFees(_positionId);
+        s_totalPnl -= int256(borrowingFees);
+        collateral[msg.sender] -= borrowingFees;
+        position.collateral -= borrowingFees;
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > MAX_LEVERAGE) {
             revert PerpetuEx__InvalidSize();
         }
@@ -178,8 +185,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.Open);
         position.totalValue += addedValue;
         position.size += _size;
+        positions[_positionId] = position;
     }
 
+    // TODO: borrowing fees
     function decreaseSize(uint256 _positionId, uint256 _size) external {
         Position storage position = positions[_positionId];
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
@@ -188,35 +197,35 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
         uint256 currentPrice = getPriceFeed();
         uint256 updatedSize = position.size - _size;
-        int256 realizedPnl;
-        uint256 averagePrice = getAverageOpenPrice(_positionId);
-
         if (updatedSize == 0) {
-            realizedPnl = _calculateUserPnl(_positionId, position.isLong);
-            s_totalPnl += realizedPnl;
-            _updatedLiquidity();
             closePosition(_positionId);
             return;
         }
         _updateOpenInterestsDecrease(position.isLong, _size, currentPrice);
+        int256 realizedPnl;
+        uint256 averagePrice = getAverageOpenPrice(_positionId);
+        uint256 borrowingFees = _borrowingFees(_positionId);
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
+        collateral[msg.sender] -= borrowingFees;
+        position.collateral -= borrowingFees;
         realizedPnl = (pnl * int256(_size)) / int256(position.size);
         s_totalPnl += realizedPnl;
         uint256 collateralAmount = (position.collateral * _size) / position.size;
-        _updatedLiquidity();
+        position.size -= _size;
+        position.totalValue -= _size * averagePrice;
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
-            position.size -= _size;
-            position.totalValue -= _size * averagePrice;
             uint256 profitRealized = profits + collateralAmount;
             collateral[msg.sender] -= collateralAmount;
+            position.collateral -= collateralAmount;
+            positions[_positionId] = position;
             i_usdc.safeTransfer(msg.sender, profitRealized);
         } else if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(realizedPnl);
-            position.size -= _size;
-            position.totalValue -= _size * averagePrice;
             uint256 lossRealized = collateralAmount - unsignedPnl;
+            position.collateral -= lossRealized;
             collateral[msg.sender] -= lossRealized;
+            positions[_positionId] = position;
             i_usdc.safeTransfer(msg.sender, lossRealized);
         }
     }
@@ -257,6 +266,16 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     /// ====================================
     /// ======= Internal Functions =========
     /// ====================================
+    function _borrowingFees(uint256 _positionId) internal view returns (uint256) {
+        Position storage position = positions[_positionId];
+        uint256 sizeInUsdc = position.totalValue;
+        uint256 secondsPositionHasExisted = block.timestamp - position.openTimestamp;
+        uint256 borrowingPerSizePerSecond = (1 * USDC_DECIMALS_ORACLE_MULTIPLIER) / (BORROWING_RATE * SECONDS_PER_YEAR);
+        uint256 numerator = sizeInUsdc * secondsPositionHasExisted * borrowingPerSizePerSecond;
+        uint256 borrowingFees = numerator / USDC_DECIMALS_ORACLE_MULTIPLIER;
+        return borrowingFees;
+    }
+
     /**
      * @dev Compute the liquidity reserve restriction and substract the total pnl of traders from it
      */
@@ -449,5 +468,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         Position memory position = positions[userToPositionIds[_user].at(0)];
         uint256 size = position.size;
         leverage = _calculateUserLeverage(size, _user);
+    }
+
+    function getBorrowingRate() public pure returns (uint256) {
+        return BORROWING_RATE;
+    }
+
+    function getBorrowingFees(address _user) public view returns (uint256 borrowingFees) {
+        Position memory position = positions[userToPositionIds[_user].at(0)];
+        uint256 size = position.size;
+        borrowingFees = _borrowingFees(size);
     }
 }
