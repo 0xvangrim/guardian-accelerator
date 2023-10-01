@@ -1,8 +1,11 @@
+// SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.19;
 
 import {Script} from "forge-std/Script.sol";
 import {MockV3Aggregator} from "../test/mocks/MockV3Aggregator.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 
 contract HelperConfig is Script {
     NetworkConfig public activeNetworkConfig;
@@ -12,7 +15,7 @@ contract HelperConfig is Script {
 
     struct NetworkConfig {
         address priceFeed; //BTC/USD Price feed
-        IERC20 usdc;
+        address usdc;
     }
 
     constructor() {
@@ -28,7 +31,7 @@ contract HelperConfig is Script {
     function getSepoliaConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory sepoliaConfig = NetworkConfig({
             priceFeed: 0x1b44F3514812d835EB1BDB0acB33d3fA3351Ee43, //BTC/USD Price feed
-            usdc: IERC20(0x8267cF9254734C6Eb452a7bb9AAF97B392258b21)
+            usdc: (0x8267cF9254734C6Eb452a7bb9AAF97B392258b21)
         });
         return sepoliaConfig;
     }
@@ -36,7 +39,7 @@ contract HelperConfig is Script {
     function getMainnetConfig() public pure returns (NetworkConfig memory) {
         NetworkConfig memory mainnetConfig = NetworkConfig({
             priceFeed: 0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c, //BTC/USD Price feed
-            usdc: IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)
+            usdc: (0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48)
         });
         return mainnetConfig;
     }
@@ -50,11 +53,10 @@ contract HelperConfig is Script {
             DECIMALS,
             INITIAL_PRICE
         );
+        ERC20Mock usdcMock = new ERC20Mock();
         vm.stopBroadcast();
-        NetworkConfig memory anvilConfig = NetworkConfig({
-            priceFeed: address(mockV3Aggregator),
-            usdc: IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48) // USDC on mainnet
-        });
+        NetworkConfig memory anvilConfig =
+            NetworkConfig({priceFeed: address(mockV3Aggregator), usdc: address(usdcMock)});
         return anvilConfig;
     }
 }

@@ -485,4 +485,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 size = position.size;
         borrowingFees = _borrowingFees(size);
     }
+
+    function getUserPnl(address _user) public view returns (int256) {
+        Position memory position = positions[userToPositionIds[_user].at(0)];
+        uint256 positionId = userToPositionIds[_user].at(0);
+        int256 pnl = _calculateUserPnl(positionId, position.isLong);
+        return pnl;
+    }
 }
