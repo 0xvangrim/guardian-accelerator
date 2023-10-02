@@ -46,7 +46,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     uint256 private constant DECIMALS_DELTA = 10 ** 12; // btc decimals - usdc decimals
     uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
 
-    uint8 private liquidationFee = 10; // 10% of the collateral
+    uint8 private liquidationDenominator = 10; // 10% of the collateral
     uint256 private maxLeverage = 20 * 10 ** 4; // 200000
     uint256 private borrowingRate = 10; //10% per year
     uint256 private maxUtilizationPercentage = 80; //80%
@@ -271,8 +271,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (userLeverage <= maxLeverage) revert PerpetuEx__NoLiquidationNeeded();
 
         uint256 newCollateral = collateral[_user] - borrowingFees;
-        uint256 rewardToLiquidator = newCollateral / liquidationFee;
-        uint256 backToProtocol = newCollateral - rewardToLiquidator + borrowingFees;
+        uint256 liquidatorFee = newCollateral / liquidationDenominator;
+        uint256 backToProtocol = newCollateral - liquidatorFee + borrowingFees;
         s_totalLiquidityDeposited += backToProtocol;
         _updateCollateral(position, collateral[_user]);
         _updateOpenInterests(isLong, size, price, PositionAction.Close);
@@ -280,7 +280,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         //TODO: Add support for more orders from the same user. For now we block it.
         userToPositionIds[_user].remove(positionId);
 
-        IERC20(i_usdc).safeTransfer(msg.sender, rewardToLiquidator);
+        IERC20(i_usdc).safeTransfer(msg.sender, liquidatorFee);
     }
 
     /// ====================================
@@ -531,7 +531,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         maxUtilizationPercentage = _maxUtilizationPercentage;
     }
 
-    function setLiquidationFee(uint8 _liquidationFee) external onlyOwner {
-        liquidationFee = _liquidationFee;
+    function setLiquidationDenominator(uint8 _liquidationDenominator) external onlyOwner {
+        liquidationDenominator = _liquidationDenominator;
     }
 }

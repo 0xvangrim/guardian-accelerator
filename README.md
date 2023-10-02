@@ -4,19 +4,19 @@
 
 ### Introduction
 
-The PerpetuEx smart contract is a Perpetual Futures protocol built on the Ethereum blockchain. It provides a platform for users to create and manage leveraged trading orders, enabling both long and short positions in wrapped Bitcoin (wBtc)
+The PerpetuEx smart contract is a Perpetual Futures protocol built on the Ethereum blockchain. It provides a platform for users to create and manage leveraged trading orders, enabling both long and short positions in wrapped Bitcoin (WBTC)
 
 ### Contract Overview
 
 The PerpetuEx contract is a complex financial instrument with several features and components. Here's a brief overview of its key components:
 
-- Orders: Users can create trading orders with specified sizes and positions (Long or Short). These orders are tracked and managed by the contract.
+- Positions: Users can create trading positions (long or short) with specified sizes . These positions are tracked and managed by the contract.
   The user does not hold the underlying asset; they are simply speculating on the price of the underlying asset.
 
 - Collateral: Users can deposit collateral in the form of a stablecoin (USDC) to support their trading positions.
   Collateral allows determining the user's leverage of a given position.
 
-  For example, if a user deposits $300 as collateral and create a long order with size of 1 on wBtc, given a wBTC price of $30,000, their leverage is x10.
+  For example, if a user deposits $300 as collateral and create a long position with size of 1 on WBTC, given a WBTC price of $30,000, their leverage is x10.
 
   The maximum allowed leverage is 20x. If the user's position exceeds this level due to a market move in the opposite direction of their anticipation, the order is subject to liquidation. In case of liquidation, the sudden loss will be reduced by the collateral, which can be withdrawn if desired.
 
@@ -24,7 +24,7 @@ The PerpetuEx contract is a complex financial instrument with several features a
 
   Liquidity is provided by liquidity providers (LPs). These LPs receive a share proportional to their liquidity deposit. When withdrawing liquidity, the LP must return their shares to the contract, which will be burned, in order to receive the corresponding amount in USDC.
 
-  Deposit accounting and share minting are managed following EIP-4626 for vault tokens.
+  The liquidity for depositing/withdrawing tokens and share minting/burning are managed following EIP-4626 for vault tokens.
 
 - PnL Calculation: The contract calculates profit and loss (PnL) for each user based on the price movements of the underlying asset.
 
@@ -36,9 +36,13 @@ The PerpetuEx contract has several configurable parameters that control its beha
 
 - `usdc`: Address of the USDC stablecoin contract.
 
-- `MAX_UTILIZATION_PERCENTAGE`: Maximum utilization percentage for liquidity.
+- `maxUtilizationPercentage`: Maximum utilization percentage for liquidity.
 
-- `MAX_LEVERAGE`: Maximum leverage allowed for trading.
+- `borrowingRate`: The rate for accumulated borrowing fees over time for open positions
+
+- `liquidationDenominator`: The denominator determines how much of the liquidated collateral are given as a reward to the liquidator
+
+- `maxLeverage`: Maximum leverage allowed for trading.
 
 - `s_totalLiquidityDeposited`: Total liquidity deposited by LPs
 
@@ -67,20 +71,20 @@ Traders and liquidity providers must first make a deposit in USDC
 Fees are an important component of DeFi protocols. PerpetuEx has two types of fees:
 `liquidatorFee` and `borrowingFee`.
 
-Liquidation fees incentivize liquidators to liquidate the positions of users whose leverage exceeds the MAX_LEVERAGE.
+Liquidation fees incentivize liquidators to liquidate the positions of users whose leverage exceeds the `maxLeverage``.
 
 `liquidatorFee` is a percentage of the position’s remaining collateral
 
-As a result, liquidators have a strong incentive to close positions as soon as the `MAX_LEVERAGE` is exceeded to minimize the risk of the collateral diminishing further if the BTC price movement continues.
+As a result, liquidators have a strong incentive to close positions as soon as the `maxLeverage` is exceeded to minimize the risk of the collateral diminishing further if the BTC price movement continues.
 A decrease in the user's collateral due to additional losses would result in a lower amount received by the liquidators.
 
-It's crucial for liquidation to occur as quickly as possible when `MAX_LEVERAGE` is reached, so that users' losses don't deepen due to a delay in liquidation.
+It's crucial for liquidation to occur as quickly as possible when `maxLeverage` is reached, so that users' losses don't deepen due to a delay in liquidation.
 
-On the other hand, swift liquidation prevents a position that has exceeded `MAX_LEVERAGE` from becoming healthy again due to a market reversal.
+On the other hand, swift liquidation prevents a position that has exceeded `maxLeverage` from becoming healthy again due to a market reversal.
 
-For example, if Bob holds a SHORT position on BTC, and the price of BTC increases significantly, causing his LEVERAGE to exceed the `MAX_LEVERAGE`, If his position is not liquidated quickly, two undesirable scenarios are likely:
+For example, if Bob holds a SHORT position on BTC, and the price of BTC increases significantly, causing his LEVERAGE to exceed the `maxLeverage`, If his position is not liquidated quickly, two undesirable scenarios are likely:
 
-1. The price of BTC decreases in a correction, allowing Bob's leverage to fall below the `MAX_LEVERAGE` threshold.
+1. The price of BTC decreases in a correction, allowing Bob's leverage to fall below the `maxLeverage` threshold.
    In this case, Bob could close his position and reduce his losses when he should have been liquidated.
    The difference in losses he endured should have gone to the liquidity providers as a profit, who are the first to be impacted in this scenario.
 
