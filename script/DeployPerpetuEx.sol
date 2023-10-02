@@ -10,11 +10,11 @@ import {console} from "forge-std/Test.sol";
 contract DeployPerpetuEx is Script {
     function run() external returns (PerpetuEx, HelperConfig) {
         HelperConfig helperConfig = new HelperConfig();
-        (address priceFeed, IERC20 usdc) = helperConfig.activeNetworkConfig();
+        (address priceFeed, address usdc) = helperConfig.activeNetworkConfig();
         console.log("Price feed address: %s", priceFeed);
-        console.log("USDC address: %s", address(usdc));
+        console.log("USDC address: %s", (usdc));
         vm.startBroadcast();
-        PerpetuEx perpetuex = new PerpetuEx(priceFeed, usdc);
+        PerpetuEx perpetuex = new PerpetuEx(priceFeed, IERC20(usdc));
         vm.stopBroadcast();
         return (perpetuex, helperConfig);
     }

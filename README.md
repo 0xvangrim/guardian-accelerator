@@ -62,6 +62,30 @@ Traders and liquidity providers must first make a deposit in USDC
 
 - `withdraw(uint256 assets, address receiver, address owner)`: Liquidity Providers can withdraw their desired amount of liquidity as long as the withdrawal does not impact the ability to pay out profits to traders
 
+### Fees
+
+Fees are an important component of DeFi protocols. PerpetuEx has two types of fees:
+`liquidatorFee` and `borrowingFee`.
+
+Liquidation fees incentivize liquidators to liquidate the positions of users whose leverage exceeds the MAX_LEVERAGE.
+
+`liquidatorFee` is a percentage of the position’s remaining collateral
+
+As a result, liquidators have a strong incentive to close positions as soon as the `MAX_LEVERAGE` is exceeded to minimize the risk of the collateral diminishing further if the BTC price movement continues.
+A decrease in the user's collateral due to additional losses would result in a lower amount received by the liquidators.
+
+It's crucial for liquidation to occur as quickly as possible when `MAX_LEVERAGE` is reached, so that users' losses don't deepen due to a delay in liquidation.
+
+On the other hand, swift liquidation prevents a position that has exceeded `MAX_LEVERAGE` from becoming healthy again due to a market reversal.
+
+For example, if Bob holds a SHORT position on BTC, and the price of BTC increases significantly, causing his LEVERAGE to exceed the `MAX_LEVERAGE`, If his position is not liquidated quickly, two undesirable scenarios are likely:
+
+1. The price of BTC decreases in a correction, allowing Bob's leverage to fall below the `MAX_LEVERAGE` threshold.
+   In this case, Bob could close his position and reduce his losses when he should have been liquidated.
+   The difference in losses he endured should have gone to the liquidity providers as a profit, who are the first to be impacted in this scenario.
+
+2. The price of BTC continues to rise, further deepening Bob's losses. The difference in losses becomes a gain for the liquidity providers, but Bob incurs even greater losses in this case and the liquidator will receive a lower amount.
+
 ### Conclusion
 
 The PerpetuEx smart contract is a powerful DeFi tool for leveraged trading and managing trading positions. Users can deposit collateral, create orders, and benefit from price movements while adhering to strict liquidity management rules.
