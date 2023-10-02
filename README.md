@@ -1,4 +1,4 @@
-# PerpetueEx Perpetual Future Protocol
+# PerpetuEx Perpetual Future Protocol
 
 ## The [`PerpetuEx`](src/PerpetuEx.sol) Contract
 
@@ -93,3 +93,31 @@ The PerpetuEx smart contract is a powerful DeFi tool for leveraged trading and m
 For more details on using the contract and its functions, please refer to the contract's source code and comments.
 
 **Disclaimer:** This README serves as a high-level overview of the PerpetuEx contract. Users should review the contract source code and seek professional advice before interacting with it. The contract involves financial risk, and all trading decisions are the responsibility of the user.
+
+# Getting Started
+
+## Requirements
+
+- [git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+  - You'll know you did it right if you can run `git --version` and you see a response like `git version x.x.x`
+- [foundry](https://getfoundry.sh/)
+  - You'll know you did it right if you can run `forge --version` and you see a response like `forge 0.2.0 (816e00b 2023-03-16T00:05:26.396218Z)`
+
+### Environment
+Copy the `.env.local` file and rename it to `.env`. Set your `MAINNET_RPC_URL` in order to start testing 
+
+## Testing
+### Test on Mainnet
+```
+make test-mainnet
+```
+
+### Test on Anvil
+```
+make test-anvil
+```
+
+### Test Coverage
+```
+make coverage-mainnet
+```
