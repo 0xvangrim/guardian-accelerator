@@ -48,6 +48,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
     uint256 private constant SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
 
+    uint256 s_totalLiquidityDeposited;
+
     // Dead shares
     uint256 DEAD_SHARES = 1000;
 
@@ -198,9 +200,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     function testWithdraw() public addLiquidity(LIQUIDITY) {
         uint256 allAssets = perpetuEx.totalSupply();
-        uint256 maxLiquidity =
-            allAssets * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
-
         uint256 maxLiquidityToWithdraw = perpetuEx.getTotalLiquidityDeposited()
             * perpetuEx.getMaxUtilizationPercentage() / perpetuEx.getMaxUtilizationPercentageDecimals();
         uint256 withdrawShares = shareCalculation(maxLiquidityToWithdraw);
@@ -428,6 +427,39 @@ contract PerpetuExTest is Test, IPerpetuEx {
         console.log("expectedBorrowingFees", expectedBorrowingFees); // 2695.201 * 1e18
 
         assertEq(borrowingFees / 1e18, expectedBorrowingFees / 1e18);
+    }
+
+    // Liquidates a position with leverage greater than MAX_LEVERAGE and transfers reward to liquidator
+    function testLiquidateNoLiquidationNeeded() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
+        address randomUser = address(123123123123123123123);
+        vm.expectRevert();
+        vm.startPrank(randomUser);
+        perpetuEx.liquidate(USER);
+        vm.stopPrank();
+    }
+
+    function testLiquidate() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
+        address randomUser = address(123123123123123123123);
+        uint256 MAX_LEVERAGE = 0;
+        uint256 LIQUIDATION_FEE = 10;
+        uint256 totalLiquidityDepositedBefore = perpetuEx.getTotalLiquidityDeposited();
+        uint256 borrowingFees = perpetuEx.getBorrowingFees(USER);
+        uint256 rewardToLiquidator = COLLATERAL / LIQUIDATION_FEE;
+        uint256 backToProtocol = COLLATERAL - rewardToLiquidator + borrowingFees;
+
+        uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
+        vm.startPrank(perpetuEx.owner());
+        perpetuEx.setMaxLeverage(MAX_LEVERAGE);
+        vm.stopPrank();
+        vm.startPrank(randomUser);
+        perpetuEx.liquidate(USER);
+        vm.stopPrank();
+        (,, uint256 size, uint256 collateral,,) = perpetuEx.positions(positionId);
+        assertEq(IERC20(usdc).balanceOf(randomUser), rewardToLiquidator);
+        assertEq(perpetuEx.collateral(USER), 0);
+        assertEq(size, 0);
+        assertEq(collateral, 0);
+        assertEq(perpetuEx.getTotalLiquidityDeposited(), totalLiquidityDepositedBefore + backToProtocol);
     }
 
     /// ====================================

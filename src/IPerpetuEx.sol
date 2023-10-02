@@ -19,6 +19,8 @@ interface IPerpetuEx {
 
     enum PositionAction {
         Open,
-        Close
+        Close,
+        IncreaseSize,
+        DecreaseSize
     }
 }
