@@ -189,7 +189,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
     }
 
     function decreaseSize(uint256 _positionId, uint256 _size) external {
-        Position storage position = positions[_positionId];
+        Position memory position = positions[_positionId];
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
         if (_size == 0) {
             revert PerpetuEx__InvalidSize();
@@ -205,8 +205,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         uint256 averagePrice = getAverageOpenPrice(_positionId);
         uint256 borrowingFees = _borrowingFees(_positionId);
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
-        collateral[msg.sender] -= borrowingFees;
-        position.collateral -= borrowingFees;
+        position = _updateCollateral(position, borrowingFees);
         realizedPnl = (pnl * int256(_size)) / int256(position.size);
         s_totalPnl += realizedPnl;
         uint256 collateralAmount = (position.collateral * _size) / position.size;
@@ -334,13 +333,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx {
         }
     }
 
-    function _updateCollateral(Position storage position, uint256 _amount)
+    function _updateCollateral(Position memory position, uint256 _amount)
         internal
         returns (Position memory updatedPosition)
     {
-        address owner = position.owner;
         position.collateral -= _amount;
-        collateral[owner] -= _amount;
+        collateral[msg.sender] -= _amount;
         updatedPosition = position;
         return updatedPosition;
     }
