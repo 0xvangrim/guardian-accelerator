@@ -34,7 +34,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     address public constant LP = address(123123123123123123123);
 
     // USDC contract address on mainnet
-    address usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address usdc;
     address usdcMock;
     // User mock params
     uint256 SIZE = 1;
@@ -54,6 +54,9 @@ contract PerpetuExTest is Test, IPerpetuEx {
     uint256 DEAD_SHARES = 1000;
 
     function setUp() external {
+        deployer = new DeployPerpetuEx();
+        (perpetuEx, helperConfig) = deployer.run();
+        (priceFeed, usdc) = helperConfig.activeNetworkConfig();
         if (block.chainid == 11155111 || block.chainid == 1) {
             // MAINNET SETUP
             // spoof .configureMinter() call with the master minter account
@@ -75,21 +78,20 @@ contract PerpetuExTest is Test, IPerpetuEx {
             IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
             vm.prank(USER2);
             IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
-        } else {
-            //ANVIL SETUP
-            deployer = new DeployPerpetuEx();
-            (perpetuEx, helperConfig) = deployer.run();
-            (priceFeed, usdcMock) = helperConfig.activeNetworkConfig();
-            ERC20Mock(usdcMock).mint(USER, COLLATERAL * 1e12);
-            ERC20Mock(usdcMock).mint(USER2, COLLATERAL * 1e12);
-            ERC20Mock(usdcMock).mint(LP, LIQUIDITY * 1e12);
+            // } else {
+            //     //ANVIL SETUP
 
-            vm.prank(USER);
-            ERC20Mock(usdcMock).approve(address(perpetuEx), type(uint256).max);
-            vm.prank(USER2);
-            ERC20Mock(usdcMock).approve(address(perpetuEx), type(uint256).max);
-            vm.prank(LP);
-            ERC20Mock(usdcMock).approve(address(perpetuEx), type(uint256).max);
+            //     ERC20Mock(usdc).mint(USER, COLLATERAL * 1e12);
+            //     ERC20Mock(usdc).mint(USER2, COLLATERAL * 1e12);
+            //     ERC20Mock(usdc).mint(LP, LIQUIDITY * 1e12);
+
+            //     vm.prank(USER);
+            //     ERC20Mock(usdc).approve(address(perpetuEx), type(uint256).max);
+            //     vm.prank(USER2);
+            //     ERC20Mock(usdc).approve(address(perpetuEx), type(uint256).max);
+            //     vm.prank(LP);
+            //     ERC20Mock(usdc).approve(address(perpetuEx), type(uint256).max);
+            // }
         }
     }
 
@@ -469,22 +471,22 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(perpetuEx.getTotalLiquidityDeposited(), totalLiquidityDepositedBefore + backToProtocol);
     }
 
-    /// ====================================
-    /// =========== Anvil Tests ============
-    /// ====================================
+    // /// ====================================
+    // /// =========== Anvil Tests ============
+    // /// ====================================
 
-    ////////////////////////
-    // PnL & Borrowing Fees
-    ////////////////////////
+    // ////////////////////////
+    // // PnL & Borrowing Fees
+    // ////////////////////////
 
-    // Needs it own setup
-    // forge test --match-test "testUserPnlIncreaseIfBtcPriceIncrease" -vvvv
+    // // Needs it own setup
+    // // forge test --match-test "testUserPnlIncreaseIfBtcPriceIncrease" -vvvv
     // function testUserPnlIncreaseIfBtcPriceIncrease() public {
     //     // setup
     //     MockV3Aggregator mockV3Aggregator = new MockV3Aggregator(8, 20000 * 1e8);
     //     PerpetuEx perpetuExBtcIncrease = new PerpetuEx(address(mockV3Aggregator), ERC20Mock(usdcMock));
 
-    //     // Arrange - LP
+    // //     // Arrange - LP
     //     vm.prank(USER);
     //     ERC20Mock(usdcMock).approve(address(perpetuExBtcIncrease), type(uint256).max);
 
@@ -500,7 +502,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     //     uint256 positionId = perpetuExBtcIncrease.userPositionIdByIndex(USER, 0);
     //     vm.stopPrank();
 
-    //     //////////////// BTC price increases from $20_000 to $30_000 ////////////////
+    // //     //////////////// BTC price increases from $20_000 to $30_000 ////////////////
     //     int256 btcUsdcUpdatedPrice = 30000 * 1e8;
     //     mockV3Aggregator.updateAnswer(btcUsdcUpdatedPrice);
     //     uint256 currentPrice = perpetuExBtcIncrease.getPriceFeed(); // 30000 * 1e18
@@ -511,20 +513,20 @@ contract PerpetuExTest is Test, IPerpetuEx {
     //     uint256 expectedPnl = SIZE * (currentPrice - (20000 * 1e18));
     //     assertEq(userPnl, expectedPnl);
 
-    //     ////////////////////////////// One year after  //////////////////////////////
+    // //     ////////////////////////////// One year after  //////////////////////////////
     //     uint256 currentTimestamp = block.timestamp;
     //     vm.warp(currentTimestamp + SECONDS_PER_YEAR);
 
     //     // Get borrowing fees after a year
     //     uint256 borrowingFees = perpetuExBtcIncrease.getBorrowingFees(USER);
 
-    //     // Get user's pnl
+    // //     // Get user's pnl
     //     userIntPnl = perpetuExBtcIncrease.getUserPnl(USER);
     //     userPnl = uint256(userIntPnl) - borrowingFees;
     //     expectedPnl = SIZE * (currentPrice - (20000 * 1e18) - borrowingFees);
     //     assertEq(userPnl, expectedPnl);
 
-    //     // Close position
+    // //     // Close position
     //     vm.startPrank(USER);
     //     console.log("borrowingFees", borrowingFees);
     //     perpetuExBtcIncrease.closePosition(positionId);
