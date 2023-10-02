@@ -138,7 +138,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     }
 
     ///////////////////////////////////////////////////
-    ////////////// LUIQUIDITY PROVIDERS ///////////////
+    ////////////// LIQUIDITY PROVIDERS ///////////////
     ///////////////////////////////////////////////////
 
     function testBalance() public {
@@ -199,7 +199,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     //Should revert since we are preserving 20% of the liquidity
     function testWithdrawAllLiquidity() public addLiquidity(LIQUIDITY) {
-        uint256 allLiquidity = perpetuEx.totalSupply();
         vm.expectRevert();
         vm.startPrank(LP);
         perpetuEx.withdraw(LIQUIDITY, LP, LP);

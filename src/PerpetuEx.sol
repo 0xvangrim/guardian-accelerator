@@ -100,17 +100,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         s_totalLiquidityDeposited = newTotalLiquidity;
     }
 
-    // function withdraw(uint256 assets, address receiver, address owner)
-    //     public
-    //     override
-    //     nonReentrant
-    //     returns (uint256 shares)
-    // {
-    //     uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
-    //     shares = super.withdraw(assets, receiver, owner);
-    //     s_totalLiquidityDeposited = newTotalLiquidity;
-    // }
-
     function withdraw(uint256 assets, address receiver, address owner)
         public
         override
@@ -118,11 +107,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         returns (uint256 shares)
     {
         uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
-        uint256 updatedLiquidity = _updatedLiquidity() - assets;
-        uint256 currentPrice = getPriceFeed();
-        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
-            revert PerpetuEx__InsufficientLiquidity();
-        }
+        _maxLiquidityUtilization(assets);
         shares = super.withdraw(assets, receiver, owner);
         s_totalLiquidityDeposited = newTotalLiquidity;
     }
@@ -146,7 +131,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > maxLeverage) {
             revert PerpetuEx__InvalidSize();
         }
-        //TODO: Add support for more orderes from the same user. For now we block it.
+        //TODO: Add support for more orders from the same user. For now we block it.
         if (userToPositionIds[msg.sender].length() > 0) {
             revert PerpetuEx__OpenPositionExists();
         }
@@ -160,10 +145,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
             isLong: _isLong,
             openTimestamp: block.timestamp
         });
-        uint256 updatedLiquidity = _updatedLiquidity();
-        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
-            revert PerpetuEx__InsufficientLiquidity();
-        }
+        _maxLiquidityUtilization(0);
         _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
         positions[s_nonce] = newPosition;
         userToPositionIds[msg.sender].add(s_nonce);
@@ -206,10 +188,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > maxLeverage) {
             revert PerpetuEx__InvalidSize();
         }
-        uint256 updatedLiquidity = _updatedLiquidity();
-        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
-            revert PerpetuEx__InsufficientLiquidity();
-        }
+        _maxLiquidityUtilization(0);
         uint256 addedValue = _size * currentPrice;
         position = positions[_positionId];
         _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.IncreaseSize);
@@ -241,6 +220,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 collateralAmount = (position.collateral * _size) / position.size;
         position.size -= _size;
         position.totalValue -= _size * averagePrice;
+
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
             uint256 profitRealized = profits + collateralAmount;
@@ -310,7 +290,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         Position storage position = positions[_positionId];
         uint256 sizeInUsdc = position.totalValue;
         uint256 secondsPositionHasExisted = block.timestamp - position.openTimestamp;
-        uint256 borrowingPerSizePerSecond = (1 * USDC_DECIMALS_ORACLE_MULTIPLIER) / (borrowingRate * SECONDS_PER_YEAR);
+        uint256 borrowingPerSizePerSecond = USDC_DECIMALS_ORACLE_MULTIPLIER / (borrowingRate * SECONDS_PER_YEAR);
         uint256 numerator = sizeInUsdc * secondsPositionHasExisted * borrowingPerSizePerSecond;
         uint256 borrowingFees = numerator / USDC_DECIMALS_ORACLE_MULTIPLIER;
         return borrowingFees;
@@ -380,6 +360,14 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
         if (totalSupply() == 0) return assets;
         return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), totalAssets() + 1, rounding);
+    }
+
+    function _maxLiquidityUtilization(uint256 assets) internal view {
+        uint256 currentPrice = getPriceFeed();
+        uint256 updatedLiquidity = _updatedLiquidity() - assets;
+        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
+            revert PerpetuEx__InsufficientLiquidity();
+        }
     }
 
     // =========================
