@@ -100,6 +100,17 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         s_totalLiquidityDeposited = newTotalLiquidity;
     }
 
+    // function withdraw(uint256 assets, address receiver, address owner)
+    //     public
+    //     override
+    //     nonReentrant
+    //     returns (uint256 shares)
+    // {
+    //     uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
+    //     shares = super.withdraw(assets, receiver, owner);
+    //     s_totalLiquidityDeposited = newTotalLiquidity;
+    // }
+
     function withdraw(uint256 assets, address receiver, address owner)
         public
         override
@@ -107,6 +118,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         returns (uint256 shares)
     {
         uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
+        uint256 updatedLiquidity = _updatedLiquidity() - assets;
+        uint256 currentPrice = getPriceFeed();
+        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
+            revert PerpetuEx__InsufficientLiquidity();
+        }
         shares = super.withdraw(assets, receiver, owner);
         s_totalLiquidityDeposited = newTotalLiquidity;
     }
@@ -145,7 +161,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
             openTimestamp: block.timestamp
         });
         uint256 updatedLiquidity = _updatedLiquidity();
-        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
+        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
         }
         _updateOpenInterests(_isLong, _size, currentPrice, PositionAction.Open);
@@ -191,7 +207,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
             revert PerpetuEx__InvalidSize();
         }
         uint256 updatedLiquidity = _updatedLiquidity();
-        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) >= updatedLiquidity * DECIMALS_DELTA) {
+        if (s_shortOpenInterest + (s_longOpenInterestInTokens * currentPrice) > updatedLiquidity * DECIMALS_DELTA) {
             revert PerpetuEx__InsufficientLiquidity();
         }
         uint256 addedValue = _size * currentPrice;
@@ -402,7 +418,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         return maxUtilizationPercentage;
     }
 
-    function getMaxUtilizationPercentageDecimals() public view returns (uint256) {
+    function getMaxUtilizationPercentageDecimals() public pure returns (uint256) {
         return MAX_UTILIZATION_PERCENTAGE_DECIMALS;
     }
 

@@ -169,11 +169,19 @@ contract PerpetuExTest is Test, IPerpetuEx {
     }
 
     function testWithdrawCollateralInsufficient() public {
-        vm.expectRevert();
+        vm.expectRevert(PerpetuEx__InsufficientCollateral.selector);
         vm.startPrank(USER);
         perpetuEx.withdrawCollateral();
         vm.stopPrank();
         assertEq(perpetuEx.collateral(USER), 0);
+    }
+
+    function testWithdrawCollateralOpenPositionExists() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
+        vm.expectRevert(PerpetuEx__OpenPositionExists.selector);
+        vm.startPrank(USER);
+        perpetuEx.withdrawCollateral();
+        vm.stopPrank();
+        assertEq(perpetuEx.collateral(USER), COLLATERAL);
     }
 
     //@func deposit
@@ -194,7 +202,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 allLiquidity = perpetuEx.totalSupply();
         vm.expectRevert();
         vm.startPrank(LP);
-        perpetuEx.withdraw(allLiquidity, LP, LP);
+        perpetuEx.withdraw(LIQUIDITY, LP, LP);
         vm.stopPrank();
     }
 
@@ -331,7 +339,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     /////////////////////
 
     function testClosePosition() public addLiquidity(LIQUIDITY) addCollateral(COLLATERAL) {
-        vm.expectRevert();
+        vm.expectRevert(PerpetuEx__InvalidPositionId.selector);
         vm.startPrank(USER);
         perpetuEx.closePosition(0);
         perpetuEx.createPosition(SIZE, true);
@@ -343,7 +351,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(longOpenInterestInTokens, 0);
         assertEq(shortOpenInterest, 0);
 
-        vm.expectRevert();
+        vm.expectRevert(PerpetuEx__InvalidPositionId.selector);
         vm.startPrank(USER);
         perpetuEx.closePosition(0);
         vm.stopPrank();
@@ -432,7 +440,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     // Liquidates a position with leverage greater than MAX_LEVERAGE and transfers reward to liquidator
     function testLiquidateNoLiquidationNeeded() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
         address randomUser = address(123123123123123123123);
-        vm.expectRevert();
+        vm.expectRevert(PerpetuEx__NoLiquidationNeeded.selector);
         vm.startPrank(randomUser);
         perpetuEx.liquidate(USER);
         vm.stopPrank();
