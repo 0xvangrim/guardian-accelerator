@@ -43,11 +43,11 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
     uint256 private constant SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
     uint256 private constant USDC_DECIMALS_ORACLE_MULTIPLIER = 1e18;
-    uint256 private constant DECIMALS_DELTA = 10 ** 12; // btc decimals - usdc decimals
-    uint256 private constant DECIMALS_PRECISION = 10 ** 4; // to avoid truncation precision loss (leverage calculation)
+    uint256 private constant DECIMALS_DELTA = 1e12; // btc decimals - usdc decimals
+    uint256 private constant DECIMALS_PRECISION = 1e3; // to avoid truncation precision loss (leverage calculation)
 
     uint8 private liquidationFee = 10; // 10% of the collateral
-    uint256 private maxLeverage = 20 * 10 ** 4; // 200000
+    uint256 private maxLeverage = 2 * 1e4; // 200000
     uint256 private borrowingRate = 10; //10% per year
     uint256 private maxUtilizationPercentage = 80; //80%
 
@@ -99,17 +99,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         shares = super.deposit(assets, receiver);
         s_totalLiquidityDeposited = newTotalLiquidity;
     }
-
-    // function withdraw(uint256 assets, address receiver, address owner)
-    //     public
-    //     override
-    //     nonReentrant
-    //     returns (uint256 shares)
-    // {
-    //     uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
-    //     shares = super.withdraw(assets, receiver, owner);
-    //     s_totalLiquidityDeposited = newTotalLiquidity;
-    // }
 
     function withdraw(uint256 assets, address receiver, address owner)
         public
@@ -196,6 +185,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         }
     }
 
+    // TODO: update timestamp on increase/decrease size
     function increaseSize(uint256 _positionId, uint256 _size) external nonReentrant {
         Position storage position = positions[_positionId];
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
@@ -215,6 +205,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         _updateOpenInterests(position.isLong, _size, currentPrice, PositionAction.IncreaseSize);
         position.totalValue += addedValue;
         position.size += _size;
+        position.openTimestamp = block.timestamp;
         positions[_positionId] = position;
     }
 
@@ -241,6 +232,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 collateralAmount = (position.collateral * _size) / position.size;
         position.size -= _size;
         position.totalValue -= _size * averagePrice;
+        position.openTimestamp = block.timestamp;
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
             uint256 profitRealized = profits + collateralAmount;
@@ -424,9 +416,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
         uint256 priceFeed = getPriceFeed();
-        uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION;
+        uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION; //1e18 * 1e4 = 1e22
 
-        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA * DECIMALS_PRECISION;
+        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA; //1e6 * 1e12 = 1e18
+        // 20 * 10 **4 = 200000
         if (userToPositionIds[_user].length() == 0) {
             userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);
             return userLeverage;

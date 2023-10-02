@@ -47,6 +47,9 @@ contract PerpetuExTest is Test, IPerpetuEx {
     uint256 private constant MAX_UTILIZATION_PERCENTAGE = 80; //80%
     uint256 private constant MAX_UTILIZATION_PERCENTAGE_DECIMALS = 100;
     uint256 private constant SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
+    uint256 private constant BORROWING_RATE = 10;
+    uint256 private constant DECIMALS_DELTA = 1e12; // btc decimals - usdc decimals
+    uint256 private constant DECIMALS_PRECISION = 10 ** 4;
 
     uint256 s_totalLiquidityDeposited;
 
@@ -468,6 +471,19 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(size, 0);
         assertEq(collateral, 0);
         assertEq(perpetuEx.getTotalLiquidityDeposited(), totalLiquidityDepositedBefore + backToProtocol);
+    }
+
+    function testGetBorrowingRate() public {
+        uint256 borrowingRate = perpetuEx.getBorrowingRate();
+        assertEq(borrowingRate, BORROWING_RATE);
+    }
+
+    function testGetLeverage() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
+        uint256 userLeverage = perpetuEx.getLeverage(USER);
+        uint256 currentPrice = perpetuEx.getPriceFeed(); //priceFeed: 1e8 * 1e10 (oracleAdjustement) = 1e18
+        // collateral: 1e8 (USDC) * 1e6  = 1e15 <=> 1e18 - 1e3 (leverageAdjustement)
+        uint256 expectedUserLeverage = SIZE * currentPrice / (COLLATERAL * 1e9);
+        assertEq(userLeverage, expectedUserLeverage);
     }
 
     /// ====================================
