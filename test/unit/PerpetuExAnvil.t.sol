@@ -104,12 +104,12 @@ contract PerpetuExTestAnvil is Test, IPerpetuEx {
         //     //////////////// BTC price increases from $20_000 to $30_000 ////////////////
         int256 btcUsdcUpdatedPrice = 30000 * 1e8;
         mockV3Aggregator.updateAnswer(btcUsdcUpdatedPrice);
-        uint256 currentPrice = perpetuExBtcIncrease.getPriceFeed(); // 30000 * 1e18
+        uint256 currentPrice = perpetuExBtcIncrease.getPriceFeed(); // 30000 * 1e15
 
         // Get user's pnl
         int256 userIntPnl = perpetuExBtcIncrease.getUserPnl(USER);
         uint256 userPnl = uint256(userIntPnl);
-        uint256 expectedPnl = SIZE * (currentPrice - (20000 * 1e18));
+        uint256 expectedPnl = SIZE * (currentPrice - (20000 * 1e15));
         assertEq(userPnl, expectedPnl);
 
         //     ////////////////////////////// One year after  //////////////////////////////
@@ -118,11 +118,10 @@ contract PerpetuExTestAnvil is Test, IPerpetuEx {
 
         // Get borrowing fees after a year
         uint256 borrowingFees = perpetuExBtcIncrease.getBorrowingFees(USER);
-
-        //     // Get user's pnl
+        // Get user's pnl
         userIntPnl = perpetuExBtcIncrease.getUserPnl(USER);
         userPnl = uint256(userIntPnl) - borrowingFees;
-        expectedPnl = SIZE * (currentPrice - (20000 * 1e18) - borrowingFees);
+        expectedPnl = SIZE * (currentPrice - (20000 * 1e15) - borrowingFees);
         assertEq(userPnl, expectedPnl);
 
         //     // Close position

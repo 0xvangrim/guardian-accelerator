@@ -44,7 +44,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     uint256 private constant SECONDS_PER_YEAR = 31536000; // 365 * 24 * 60 * 60
     uint256 private constant USDC_DECIMALS_ORACLE_MULTIPLIER = 1e18;
     uint256 private constant DECIMALS_DELTA = 1e12; // btc decimals - usdc decimals
-    uint256 private constant DECIMALS_PRECISION = 1e3; // to avoid truncation precision loss (leverage calculation)
+    uint256 private constant DECIMALS_PRECISION = 1e6; // to avoid truncation precision loss (leverage calculation)
 
     uint8 private liquidationDenominator = 10; // 10% of the collateral
     uint256 private maxLeverage = 2 * 1e4; // 200000
@@ -413,8 +413,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
-        uint256 priceFeed = getPriceFeed();
-        uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION; //1e18 * 1e4 = 1e22
+        uint256 priceFeed = getPriceFeed(); // 1e15
+        uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION; //1e15 * 1e6 = 1e21
 
         uint256 userCollateral = collateral[_user] * DECIMALS_DELTA; //1e6 * 1e12 = 1e18
         // 20 * 10 **4 = 200000
