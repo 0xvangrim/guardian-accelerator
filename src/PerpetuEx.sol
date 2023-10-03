@@ -178,7 +178,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         }
     }
 
-    // TODO: update timestamp on increase/decrease size
     function increaseSize(uint256 _positionId, uint256 _size) external nonReentrant {
         Position storage position = positions[_positionId];
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
@@ -484,7 +483,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function totalAssets() public view override returns (uint256 assets) {
-        //assuming 1 usdc = $1
         if (s_totalPnl >= 0) {
             uint256 totalPnl = uint256(s_totalPnl);
             assets = s_totalLiquidityDeposited - totalPnl;
