@@ -60,42 +60,27 @@ contract PerpetuExTest is Test, IPerpetuEx {
         deployer = new DeployPerpetuEx();
         (perpetuEx, helperConfig) = deployer.run();
         (priceFeed, usdc) = helperConfig.activeNetworkConfig();
-        if (block.chainid == 11155111 || block.chainid == 1) {
-            // MAINNET SETUP
-            // spoof .configureMinter() call with the master minter account
-            vm.prank(IUSDC(usdc).masterMinter());
-            // allow this test contract to mint USDC
-            IUSDC(usdc).configureMinter(address(this), type(uint256).max);
-            // mint max to the test contract (or an external user)
-            IUSDC(usdc).mint(USER, COLLATERAL);
-            IUSDC(usdc).mint(USER2, COLLATERAL);
-            // mint max to the LP account
-            IUSDC(usdc).mint(LP, LIQUIDITY);
-            deployer = new DeployPerpetuEx();
-            (perpetuEx, helperConfig) = deployer.run();
-            (priceFeed,) = helperConfig.activeNetworkConfig();
 
-            vm.prank(USER);
-            IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
-            vm.prank(LP);
-            IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
-            vm.prank(USER2);
-            IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
-            // } else {
-            //     //ANVIL SETUP
+        // MAINNET SETUP
+        // spoof .configureMinter() call with the master minter account
+        vm.prank(IUSDC(usdc).masterMinter());
+        // allow this test contract to mint USDC
+        IUSDC(usdc).configureMinter(address(this), type(uint256).max);
+        // mint max to the test contract (or an external user)
+        IUSDC(usdc).mint(USER, COLLATERAL);
+        IUSDC(usdc).mint(USER2, COLLATERAL);
+        // mint max to the LP account
+        IUSDC(usdc).mint(LP, LIQUIDITY);
+        deployer = new DeployPerpetuEx();
+        (perpetuEx, helperConfig) = deployer.run();
+        (priceFeed,) = helperConfig.activeNetworkConfig();
 
-            //     ERC20Mock(usdc).mint(USER, COLLATERAL * 1e12);
-            //     ERC20Mock(usdc).mint(USER2, COLLATERAL * 1e12);
-            //     ERC20Mock(usdc).mint(LP, LIQUIDITY * 1e12);
-
-            //     vm.prank(USER);
-            //     ERC20Mock(usdc).approve(address(perpetuEx), type(uint256).max);
-            //     vm.prank(USER2);
-            //     ERC20Mock(usdc).approve(address(perpetuEx), type(uint256).max);
-            //     vm.prank(LP);
-            //     ERC20Mock(usdc).approve(address(perpetuEx), type(uint256).max);
-            // }
-        }
+        vm.prank(USER);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        vm.prank(LP);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
+        vm.prank(USER2);
+        IERC20(usdc).approve(address(perpetuEx), type(uint256).max);
     }
 
     ///////////////////////////////////////////////////
@@ -485,7 +470,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
 
     function testGetLeverage() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE) {
         uint256 userLeverage = perpetuEx.getLeverage(USER);
-        uint256 currentPrice = perpetuEx.getPriceFeed(); //priceFeed: 1e8 * 1e10 (oracleAdjustement) = 1e18
+        uint256 currentPrice = perpetuEx.getPriceFeed();
+        //priceFeed: 1e8 * 1e10 (oracleAdjustement) = 1e18
         // collateral: 1e8 (USDC) * 1e6  = 1e15 <=> 1e18 - 1e3 (leverageAdjustement)
         uint256 expectedUserLeverage = SIZE * currentPrice / (COLLATERAL * 1e9);
         console.log("expectedUserLeverage", expectedUserLeverage);
