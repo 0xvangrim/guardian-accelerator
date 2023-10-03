@@ -504,9 +504,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function getBorrowingFees(address _user) public view returns (uint256 borrowingFees) {
-        Position memory position = positions[userToPositionIds[_user].at(0)];
-        uint256 size = position.size;
-        borrowingFees = _borrowingFees(size);
+        borrowingFees = _borrowingFees(userToPositionIds[_user].at(0));
     }
 
     function getUserPnl(address _user) public view returns (int256) {
