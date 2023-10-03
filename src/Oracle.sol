@@ -6,6 +6,7 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/Ag
 library Oracle {
     uint256 private constant DECIMALS_ADJUSTMENT = 1e10; // To adjust the 8 decimal BTC price to 18 decimals
     uint256 private constant PRECISION = 1e18; // Represents 18 decimals, commonly used in Ethereum
+    // added size adjustment and multiplied answer by 1e3
 
     function getBtcInUsdPrice(AggregatorV3Interface priceFeed) public view returns (uint256) {
         (, int256 answer,,,) = priceFeed.latestRoundData();
