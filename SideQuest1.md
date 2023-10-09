@@ -1,4 +1,4 @@
-1. In the safeTransferFrom function, what does `0x23b872dd000000000000000000000000` represent and what does it mean when used in the following context on line 192: `mstore(0x0c, 0x23b872dd000000000000000000000000)`.
+### In the safeTransferFrom function, what does `0x23b872dd000000000000000000000000` represent and what does it mean when used in the following context on line 192: `mstore(0x0c, 0x23b872dd000000000000000000000000)`.
 
 ```solidity
 mstore(0x0c, 0x23b872dd000000000000000000000000)
@@ -18,7 +18,7 @@ The 12 last bytes of zeros will be stored at the beguining of the `**0x20**` mem
 
 From `**0x20**` to `0x2c`
 
-2. In the `safeTransferFrom` function, why is `shl` used on line 191 to shift the `from` to the left by 96 bits?
+### In the `safeTransferFrom` function, why is `shl` used on line 191 to shift the `from` to the left by 96 bits?
 
 ```solidity
 mstore(0x2c, shl(96, from))
@@ -30,7 +30,7 @@ shl removes the 12 first bytes at the beguining of the address because an addres
 
 After removing the useless piece of the address, we store it starting at 0x2c (44 in hex), so in the second word (0x20) by an offset of 12 bytes (44 = 32 + 12). The address is stored in 0x20 memory word padded with zeros : 0x000000000000deadbeefdeadbeefdeadbeef
 
-3. In the safeTransferFrom function, is this memory safe assembly? Why or why not?
+### In the safeTransferFrom function, is this memory safe assembly? Why or why not?
 
 Yes, it seems to be a memory-safe assembly. According to the Solidity docs, assembly is considered to be memory-safe assembly if it only accesses memory ranges following the memory ranges below:
 1.Memory is allocated by yourself.
@@ -52,7 +52,7 @@ mstore(0x40, m)
 
 The zero slot (0x60) is also restored to zero
 
-4. In the safeTransferFrom function, on line 197, why is 0x1c provided as the 4th argument to call?
+### In the safeTransferFrom function, on line 197, why is 0x1c provided as the 4th argument to call?
 
 ```solidity
 call(gas(), token, 0, 0x1c, 0x64, 0x00, 0x20)
@@ -72,7 +72,7 @@ The data in memory starting from `0x1c` (28 in dec) with size `0x64` (100 in dec
 
 In fact we are forwarding all of the 63/64 gas, calling the `transferFrom` function from the token, with the `from` address, the `to` address and the `amount` as arguments.
 
-5. In the safeTransfer function, on line 266, why is revert used with 0x1c and 0x04.
+### In the safeTransfer function, on line 266, why is revert used with 0x1c and 0x04.
 
 ```solidity
 mstore(0x00, 0x90b8ec18)
@@ -84,15 +84,15 @@ revert(0x1c, 0x04)
 
 We are reverting with the last 4 bytes of the memory word 0x00, which correspond to `TransferFailed()`
 
-6. In the safeTransfer function, on line 268, why is 0 mstore’d at 0x34.
+### In the safeTransfer function, on line 268, why is 0 mstore’d at 0x34.
 
 Because the free memory pointer is the 0x40 word, on line 256 we are storing the amount in 0x34, meaning we are overriding the fmp. We need to restore it at the end.
 
-7. In the safeApprove function, on line 317, why is mload(0x00) validated for equality to 1?
+### In the safeApprove function, on line 317, why is mload(0x00) validated for equality to 1?
 
 mload(0x00) validated for equality to 1 because during the call we are copying a full word (0x20) of returned data. If false (return data from the call) is copied to 0x00, mload(0x00) is falsy so it’s 0, meaning eq(mload(0x00), 1) returns 0 (false)
 
-8. In the safeApprove function, if the token returns false from the approve(address,uint256) function, what happens?
+### In the safeApprove function, if the token returns false from the approve(address,uint256) function, what happens?
 
 The function will revert with `ApproveFailed()`
 
