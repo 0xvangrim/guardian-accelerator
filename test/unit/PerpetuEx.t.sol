@@ -427,7 +427,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 expectedBorrowingFees = positionAmount / borrowingRate;
         console.log("expectedBorrowingFees", expectedBorrowingFees); // 2695.201 * 1e18
 
-        assertEq(borrowingFees / 1e18, expectedBorrowingFees / 1e18);
+        assertEq(Math.ceilDiv(borrowingFees, 1e18), Math.ceilDiv(expectedBorrowingFees, 1e18));
     }
 
     // Liquidates a position with leverage greater than MAX_LEVERAGE and transfers reward to liquidator

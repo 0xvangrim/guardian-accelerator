@@ -244,7 +244,8 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         Position storage position = positions[_positionId];
         if (_collateral == 0) revert PerpetuEx__InvalidCollateral();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
-        position.collateral += _collateral;
+        uint256 newCollateral = position.collateral + _collateral;
+        _updateCollateral(position, newCollateral);
         i_usdc.safeTransferFrom(msg.sender, address(this), _collateral);
     }
 
@@ -304,7 +305,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 secondsPositionHasExisted = block.timestamp - position.openTimestamp;
         uint256 borrowingPerSizePerSecond = USDC_DECIMALS_ORACLE_MULTIPLIER / (SECONDS_PER_YEAR * borrowingRate); // we're making sure that borrowing size per second matches the borrowing rate which is 10%
         uint256 numerator = sizeIn18Decimals * secondsPositionHasExisted * borrowingPerSizePerSecond;
-        uint256 borrowingFees = numerator / USDC_DECIMALS_ORACLE_MULTIPLIER; // convert back to original unit
+        uint256 borrowingFees = Math.ceilDiv(numerator, USDC_DECIMALS_ORACLE_MULTIPLIER); // convert back to original unit
         return borrowingFees;
     }
 
