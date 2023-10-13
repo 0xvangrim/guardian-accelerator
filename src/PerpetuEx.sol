@@ -156,6 +156,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (_positionId == 0) revert PerpetuEx__InvalidPositionId();
         if (position.owner != msg.sender) revert PerpetuEx__NotOwner();
         uint256 borrowingFees = _borrowingFees(_positionId);
+        s_totalLiquidityDeposited += borrowingFees / DECIMALS_DELTA;
         int256 pnl = _calculateUserPnl(_positionId, position.isLong) - int256(borrowingFees);
         uint256 collateralAmount = position.collateral;
         if (pnl > 0) {
@@ -184,7 +185,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 currentPrice = getPriceFeed();
         uint256 borrowingFees = _borrowingFees(_positionId);
         s_totalPnl -= int256(borrowingFees);
-        positions[_positionId] = _updateCollateral(position, borrowingFees);
+        uint256 newCollateral = position.collateral - borrowingFees;
+        s_totalLiquidityDeposited += borrowingFees / DECIMALS_DELTA;
+        positions[_positionId] = _updateCollateral(position, newCollateral);
         if (_size == 0 || _calculateUserLeverage(_size, msg.sender) > maxLeverage) {
             revert PerpetuEx__InvalidSize();
         }
@@ -215,7 +218,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 averagePrice = getAverageOpenPrice(_positionId);
         uint256 borrowingFees = _borrowingFees(_positionId);
         int256 pnl = _calculateUserPnl(_positionId, position.isLong);
-        position = _updateCollateral(position, borrowingFees);
+        uint256 newCollateral = position.collateral - borrowingFees;
+        s_totalLiquidityDeposited += borrowingFees / DECIMALS_DELTA;
+        position = _updateCollateral(position, newCollateral);
         realizedPnl = (pnl * int256(_size)) / int256(position.size);
         s_totalPnl += realizedPnl;
         uint256 collateralAmount = (position.collateral * _size) / position.size;
@@ -225,12 +230,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (realizedPnl > 0) {
             uint256 profits = uint256(realizedPnl);
             uint256 profitRealized = profits + collateralAmount;
-            positions[_positionId] = _updateCollateral(position, profitRealized);
+            positions[_positionId] = _updateCollateral(position, position.collateral - profitRealized);
             i_usdc.safeTransfer(msg.sender, profitRealized);
         } else if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(realizedPnl);
             uint256 lossRealized = collateralAmount - unsignedPnl;
-            positions[_positionId] = _updateCollateral(position, lossRealized);
+            positions[_positionId] = _updateCollateral(position, position.collateral - lossRealized);
             i_usdc.safeTransfer(msg.sender, lossRealized);
         }
     }
@@ -250,9 +255,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (_amount == 0) revert PerpetuEx__InvalidAmount();
 
         uint256 userCollateral = collateral[msg.sender];
-        collateral[msg.sender] = userCollateral - _amount;
-        Position memory position = positions[userToPositionIds[msg.sender].at(0)];
+        uint256 positionId = userToPositionIds[msg.sender].at(0);
+        uint256 borrowingFees = _borrowingFees(positionId) / DECIMALS_DELTA;
+        s_totalLiquidityDeposited += borrowingFees / DECIMALS_DELTA;
+        Position memory position = positions[positionId];
         uint256 size = position.size;
+        uint256 newCollateral = userCollateral - _amount - borrowingFees;
+        _updateCollateral(position, newCollateral);
         uint256 updatedLeverage = _calculateUserLeverage(size, msg.sender);
         if (updatedLeverage > maxLeverage) {
             revert PerpetuEx__InvalidAmount();
@@ -275,7 +284,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 liquidatorFee = newCollateral / liquidationDenominator;
         uint256 backToProtocol = newCollateral - liquidatorFee + borrowingFees;
         s_totalLiquidityDeposited += backToProtocol;
-        _updateCollateral(position, collateral[_user]);
+        _updateCollateral(position, 0);
         _updateOpenInterests(isLong, size, price, PositionAction.Close);
         delete positions[positionId];
         //TODO: Add support for more orders from the same user. For now we block it.
@@ -287,13 +296,15 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     /// ====================================
     /// ======= Internal Functions =========
     /// ====================================
+
+    //@dev make sure this one stays 18 decimals and make conversion in the functions that need them
     function _borrowingFees(uint256 _positionId) internal view returns (uint256) {
         Position storage position = positions[_positionId];
-        uint256 sizeInUsdc = position.totalValue;
+        uint256 sizeIn18Decimals = position.totalValue; // convert to 18 decimals
         uint256 secondsPositionHasExisted = block.timestamp - position.openTimestamp;
-        uint256 borrowingPerSizePerSecond = USDC_DECIMALS_ORACLE_MULTIPLIER / (borrowingRate * SECONDS_PER_YEAR);
-        uint256 numerator = sizeInUsdc * secondsPositionHasExisted * borrowingPerSizePerSecond;
-        uint256 borrowingFees = numerator / USDC_DECIMALS_ORACLE_MULTIPLIER;
+        uint256 borrowingPerSizePerSecond = USDC_DECIMALS_ORACLE_MULTIPLIER / (SECONDS_PER_YEAR * borrowingRate); // we're making sure that borrowing size per second matches the borrowing rate which is 10%
+        uint256 numerator = sizeIn18Decimals * secondsPositionHasExisted * borrowingPerSizePerSecond;
+        uint256 borrowingFees = numerator / USDC_DECIMALS_ORACLE_MULTIPLIER; // convert back to original unit
         return borrowingFees;
     }
 
@@ -349,12 +360,12 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         }
     }
 
-    function _updateCollateral(Position memory position, uint256 _amount)
+    function _updateCollateral(Position memory position, uint256 _newCollateral)
         internal
         returns (Position memory updatedPosition)
     {
-        position.collateral -= _amount;
-        collateral[position.owner] -= _amount;
+        position.collateral = _newCollateral;
+        collateral[position.owner] = _newCollateral;
         updatedPosition = position;
     }
 
@@ -412,33 +423,24 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function _calculateUserLeverage(uint256 _size, address _user) internal view returns (uint256 userLeverage) {
-        uint256 priceFeed = getPriceFeed();
-        uint256 priceFeedPrecisionAdjusted = priceFeed * DECIMALS_PRECISION; //1e18 * 1e4 = 1e22
-
-        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA; //1e6 * 1e12 = 1e18
-        // 20 * 10 **4 = 200000
+        uint256 priceFeed = getPriceFeed() * DECIMALS_PRECISION;
+        uint256 userCollateral = collateral[_user] * DECIMALS_DELTA; // Convert to 1e18 scale
         if (userToPositionIds[_user].length() == 0) {
-            userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);
-            return userLeverage;
+            return (_size * priceFeed) / userCollateral;
         }
-        //TODO: Add support for more orders from the same user. For now we block it.
+
         uint256 positionId = userToPositionIds[_user].at(0);
         Position memory position = positions[positionId];
-        int256 userPnl = _calculateUserPnl(positionId, position.isLong);
+        int256 userPnl = _calculateUserPnl(positionId, position.isLong); // Assuming 1e18
 
-        if (userPnl == 0) {
-            userLeverage = _size.mulDiv(priceFeedPrecisionAdjusted, userCollateral);
-            return userLeverage;
-        }
         if (userPnl > 0) {
-            userLeverage = (_size.mulDiv(priceFeedPrecisionAdjusted, userCollateral + uint256(userPnl)));
-            return userLeverage;
+            userLeverage = (_size * priceFeed) / (userCollateral + uint256(userPnl));
+        } else if (userPnl < 0) {
+            userLeverage = (_size * priceFeed) / (userCollateral - uint256(-userPnl));
+        } else {
+            userLeverage = (_size * priceFeed) / userCollateral;
         }
-        if (userPnl < 0) {
-            uint256 unsignedPnl = SignedMath.abs(userPnl);
-            userLeverage = (_size.mulDiv(priceFeedPrecisionAdjusted, userCollateral - unsignedPnl));
-            return userLeverage;
-        }
+        return userLeverage;
     }
 
     function _calculateUserPnl(uint256 _positionId, bool _isLong) internal view returns (int256 pnl) {
