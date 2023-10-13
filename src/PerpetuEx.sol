@@ -95,6 +95,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256 shares) {
+        if (assets == 0) revert PerpetuEx__InvalidAmount();
         uint256 newTotalLiquidity = s_totalLiquidityDeposited + assets;
         shares = super.deposit(assets, receiver);
         s_totalLiquidityDeposited = newTotalLiquidity;
@@ -106,6 +107,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         nonReentrant
         returns (uint256 shares)
     {
+        if (assets == 0) revert PerpetuEx__InvalidAmount();
         uint256 newTotalLiquidity = s_totalLiquidityDeposited - assets;
         _maxLiquidityUtilization(assets);
         shares = super.withdraw(assets, receiver, owner);
@@ -113,6 +115,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function mint(uint256 shares, address receiver) public override nonReentrant returns (uint256 assets) {
+        if (shares == 0) revert PerpetuEx__InvalidAmount();
         assets = super.mint(shares, receiver);
         s_totalLiquidityDeposited += assets;
     }
@@ -123,6 +126,7 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         nonReentrant
         returns (uint256 assets)
     {
+        if (shares == 0) revert PerpetuEx__InvalidAmount();
         assets = super.redeem(shares, receiver, owner);
         s_totalLiquidityDeposited -= assets;
     }
