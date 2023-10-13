@@ -159,9 +159,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         s_totalLiquidityDeposited += borrowingFees / DECIMALS_DELTA;
         int256 pnl = _calculateUserPnl(_positionId, position.isLong) - int256(borrowingFees);
         uint256 collateralAmount = position.collateral;
+        _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
         if (pnl > 0) {
             uint256 profits = uint256(pnl);
-            _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
             s_totalPnl -= int256(profits);
             userToPositionIds[msg.sender].remove(_positionId);
             delete positions[_positionId];
@@ -170,7 +170,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         }
         if (pnl <= 0) {
             uint256 unsignedPnl = SignedMath.abs(pnl);
-            _updateOpenInterests(position.isLong, position.size, getAverageOpenPrice(_positionId), PositionAction.Close);
             s_totalPnl += int256(unsignedPnl);
             userToPositionIds[msg.sender].remove(_positionId);
             delete positions[_positionId];
@@ -451,8 +450,6 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
             pnl = (int256(currentPrice - averagePrice) * int256(position.size));
         } else if (!_isLong) {
             pnl = (int256(averagePrice - currentPrice) * int256(position.size));
-        } else {
-            revert PerpetuEx__NoPositionChosen();
         }
     }
 
