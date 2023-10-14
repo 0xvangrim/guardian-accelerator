@@ -40,7 +40,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
     uint256 SIZE = 1;
     uint256 SIZE_2 = 2;
     uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
-    uint256 DECREASE_COLLATERAL = 1500e6;
     uint256 DECREASE_COLLATERAL = 1;
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
