@@ -55,8 +55,10 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
 
     uint256 public s_totalLiquidityDeposited;
     int256 public s_totalPnl;
+    uint256 public s_shortOpenInterestInTokens;
     uint256 public s_shortOpenInterest;
     uint256 public s_longOpenInterestInTokens;
+    uint256 public s_longOpenInterest;
 
     constructor(address priceFeed, IERC20 _usdc) ERC4626(_usdc) ERC20("PerpetuEx", "PXT") Ownable(msg.sender) {
         i_priceFeed = AggregatorV3Interface(priceFeed);
@@ -325,35 +327,26 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         }
     }
 
-    function _totalOpenInterest(bool _isLong, uint256 _size, uint256 _currentPrice)
-        internal
-        view
-        returns (uint256 totalOpenInterestValue)
-    {
-        // Calculate new open interests
-        uint256 newLongOpenInterestInTokens = _isLong ? s_longOpenInterestInTokens + _size : s_longOpenInterestInTokens;
-
-        uint256 newShortOpenInterest = !_isLong ? s_shortOpenInterest + (_size * _currentPrice) : s_shortOpenInterest;
-
-        // Calculate the total open interest value
-        totalOpenInterestValue = (newLongOpenInterestInTokens * _currentPrice) + newShortOpenInterest;
-    }
-
     function _updateOpenInterests(bool _isLong, uint256 _size, uint256 _price, PositionAction positionAction)
         internal
     {
+        uint256 valueChange = _size * _price;
         if (_isLong) {
             if (positionAction == PositionAction.Open || positionAction == PositionAction.IncreaseSize) {
                 s_longOpenInterestInTokens += _size;
+                s_longOpenInterest += _size * _price;
             } else if (positionAction == PositionAction.Close || positionAction == PositionAction.DecreaseSize) {
                 s_longOpenInterestInTokens -= _size;
+                s_longOpenInterest -= valueChange;
             }
         } else if (!_isLong) {
-            uint256 valueChange = _size * _price;
+            // uint256 valueChange = _size * _price;
             if (positionAction == PositionAction.Open || positionAction == PositionAction.IncreaseSize) {
                 s_shortOpenInterest += valueChange;
+                s_shortOpenInterestInTokens += _size;
             } else if (positionAction == PositionAction.Close || positionAction == PositionAction.DecreaseSize) {
                 s_shortOpenInterest -= valueChange;
+                s_shortOpenInterestInTokens -= _size;
             }
         } else {
             revert PerpetuEx__NoPositionChosen();
@@ -485,13 +478,14 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
     }
 
     function totalAssets() public view override returns (uint256 assets) {
-        if (s_totalPnl >= 0) {
-            uint256 totalPnl = uint256(s_totalPnl);
-            assets = s_totalLiquidityDeposited - totalPnl;
-        }
-        if (s_totalPnl < 0) {
-            uint256 totalPnl = SignedMath.abs(s_totalPnl);
-            assets = s_totalLiquidityDeposited + totalPnl;
+        uint256 currentPrice = getPriceFeed();
+        int256 pnlForLongs = (int256(currentPrice) * int256(s_longOpenInterestInTokens)) - int256(s_longOpenInterest);
+        int256 pnlForShorts = int256(s_shortOpenInterest) - int256(s_shortOpenInterestInTokens * currentPrice);
+        int256 totalPnl = pnlForLongs + pnlForShorts;
+        if (totalPnl >= 0) {
+            assets = s_totalLiquidityDeposited - uint256(totalPnl);
+        } else {
+            assets = s_totalLiquidityDeposited + uint256(SignedMath.abs(totalPnl));
         }
     }
 
