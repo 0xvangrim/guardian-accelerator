@@ -40,6 +40,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
     uint256 SIZE = 1;
     uint256 SIZE_2 = 2;
     uint256 COLLATERAL = 10000e6; // sufficient collateral to open a position with size 1
+    uint256 DECREASE_COLLATERAL = 1500e6;
     uint256 DECREASE_COLLATERAL = 1;
     // LP mock params
     uint256 LIQUIDITY = 1000000e6;
@@ -283,6 +284,10 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(totalValue, SIZE * averageOpenPrice);
     }
 
+    /////////////////////
+    // Close Position
+    /////////////////////
+
     function testOpenLongAndShortPositions() public addLiquidity(LIQUIDITY) addCollateral(COLLATERAL) {
         vm.startPrank(USER2);
         perpetuEx.depositCollateral(COLLATERAL);
@@ -370,8 +375,6 @@ contract PerpetuExTest is Test, IPerpetuEx {
     //////////////////
 
     function testDecreaseSize() public longPositionOpened(LIQUIDITY, COLLATERAL, SIZE_2) {
-        uint256 userBalanceBefore = IERC20(usdc).balanceOf(USER);
-        console.log("userBalanceBefore", userBalanceBefore);
         vm.startPrank(USER);
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         perpetuEx.decreaseSize(positionId, SIZE);
@@ -427,7 +430,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 expectedBorrowingFees = positionAmount / borrowingRate;
         console.log("expectedBorrowingFees", expectedBorrowingFees); // 2695.201 * 1e18
 
-        assertEq(borrowingFees / 1e18, expectedBorrowingFees / 1e18);
+        assertEq(Math.ceilDiv(borrowingFees, 1e18), Math.ceilDiv(expectedBorrowingFees, 1e18));
     }
 
     // Liquidates a position with leverage greater than MAX_LEVERAGE and transfers reward to liquidator
