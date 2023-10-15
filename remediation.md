@@ -33,3 +33,7 @@
 ## Critical-02 Additional findings [36f53522b48a5938527479c24c49abdfaeef0188]
 
 - Fixed
+
+## M-01 Additional findings [e260efb1db0bb4bffe659d30c1c546121ecf72d4]
+
+- Fixed
