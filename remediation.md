@@ -26,6 +26,10 @@
 
 - Not fixed since it is not a requirement for Mission 2.
 
-## H-01 Additional findings [adcc65160aac50e073f6592ad1ddb2a999958d47]
+## Critical-01 Additional findings [adcc65160aac50e073f6592ad1ddb2a999958d47]
+
+- Fixed
+
+## Critical-02 Additional findings [36f53522b48a5938527479c24c49abdfaeef0188]
 
 - Fixed

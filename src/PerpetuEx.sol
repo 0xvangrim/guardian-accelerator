@@ -400,6 +400,9 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         if (_positionId == 0 || position.totalValue == 0 || position.size == 0) {
             revert PerpetuEx__InvalidPositionId();
         }
+        if (position.isLong) {
+            return Math.ceilDiv(position.totalValue, position.size);
+        }
         return position.totalValue / position.size;
     }
 
