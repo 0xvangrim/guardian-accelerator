@@ -429,11 +429,13 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         uint256 positionId = userToPositionIds[_user].at(0);
         Position memory position = positions[positionId];
         int256 userPnl = _calculateUserPnl(positionId, position.isLong); // Assuming 1e18
-
-        if (userPnl >= 0) {
-            userLeverage = (_size * priceFeed) / (userCollateral + uint256(userPnl));
-        } else if (userPnl < 0) {
-            userLeverage = (_size * priceFeed) / (userCollateral - uint256(-userPnl));
+        if (userToPositionIds[_user].length() > 0) {
+            uint256 borrowingFees = getBorrowingFees(_user);
+            if (userPnl >= 0) {
+                userLeverage = (_size * priceFeed) / (userCollateral + uint256(userPnl) - borrowingFees);
+            } else if (userPnl < 0) {
+                userLeverage = (_size * priceFeed) / (userCollateral - uint256(-userPnl) - borrowingFees);
+            }
         }
         return userLeverage;
     }
