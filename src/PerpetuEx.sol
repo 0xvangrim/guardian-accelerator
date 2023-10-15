@@ -282,20 +282,20 @@ contract PerpetuEx is ERC4626, IPerpetuEx, Ownable, ReentrancyGuard {
         bool isLong = position.isLong;
         uint256 userLeverage = _calculateUserLeverage(size, _user);
         uint256 borrowingFees = _borrowingFees(positionId);
+        int256 userPnl = _calculateUserPnl(positionId, isLong);
         uint256 price = getPriceFeed();
 
         if (userLeverage <= maxLeverage) revert PerpetuEx__NoLiquidationNeeded();
 
-        uint256 newCollateral = collateral[_user] - borrowingFees;
+        uint256 newCollateral = collateral[_user] - borrowingFees - uint256(SignedMath.abs(userPnl));
         uint256 liquidatorFee = newCollateral / liquidationDenominator;
-        uint256 backToProtocol = newCollateral - liquidatorFee + borrowingFees;
-        s_totalLiquidityDeposited += backToProtocol;
+        s_totalLiquidityDeposited += borrowingFees;
         _updateCollateral(position, 0);
         _updateOpenInterests(isLong, size, price, PositionAction.Close);
         delete positions[positionId];
         //TODO: Add support for more orders from the same user. For now we block it.
         userToPositionIds[_user].remove(positionId);
-
+        IERC20(i_usdc).safeTransfer(_user, newCollateral - liquidatorFee);
         IERC20(i_usdc).safeTransfer(msg.sender, liquidatorFee);
     }
 

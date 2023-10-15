@@ -446,7 +446,8 @@ contract PerpetuExTest is Test, IPerpetuEx {
         uint256 totalLiquidityDepositedBefore = perpetuEx.getTotalLiquidityDeposited();
         uint256 borrowingFees = perpetuEx.getBorrowingFees(USER);
         uint256 rewardToLiquidator = COLLATERAL / LIQUIDATION_FEE;
-        uint256 backToProtocol = COLLATERAL - rewardToLiquidator + borrowingFees;
+        // uint256 backToProtocol = COLLATERAL - rewardToLiquidator + borrowingFees;
+        uint256 backToProtocol = borrowingFees;
 
         uint256 positionId = perpetuEx.userPositionIdByIndex(USER, 0);
         vm.startPrank(perpetuEx.owner());
@@ -461,6 +462,7 @@ contract PerpetuExTest is Test, IPerpetuEx {
         assertEq(size, 0);
         assertEq(collateral, 0);
         assertEq(perpetuEx.getTotalLiquidityDeposited(), totalLiquidityDepositedBefore + backToProtocol);
+        assertEq(IERC20(usdc).balanceOf(USER), COLLATERAL - rewardToLiquidator - borrowingFees);
     }
 
     ////////////
