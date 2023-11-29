@@ -1,5 +1,8 @@
 # PerpetuEx Perpetual Future Protocol
 
+**Disclaimer:** 
+> The PerpetuEx protocol, as detailed in this README, is a proof of concept (POC) and should not be used in a production environment. It is intended for demonstration and educational purposes only. Users should be aware that interacting with this protocol involves risks, including but not limited to financial loss, and should exercise caution. The developers of PerpetuEx assume no responsibility for any loss or damage that may arise from the use of this protocol. All users are advised to review the source code thoroughly and understand the risks involved before any interaction.
+
 ## The [`PerpetuEx`](src/PerpetuEx.sol) Contract
 
 ### Introduction
